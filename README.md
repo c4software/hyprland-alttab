@@ -1,22 +1,22 @@
 # hyprland-alttab
 
-Switcher de fenêtres Alt+Tab pour Hyprland, avec overlay GTK4 layer-shell.  
-Disponible en deux implémentations identiques : Python (original) et Rust.
+Alt+Tab window switcher for Hyprland, with a GTK4 layer-shell overlay.  
+Available in two identical implementations: Python (original) and Rust.
 
 ---
 
-## Implémentation Rust
+## Rust Implementation
 
-### Dépendances système
+### System dependencies
 
 ```bash
 # Arch Linux
 sudo pacman -S gtk4 gtk4-layer-shell rust
 ```
 
-Les bibliothèques C nécessaires au link :
+C libraries required for linking:
 - `libgtk-4.so` — GTK 4
-- `libgtk4-layer-shell.so` — protocole Wayland layer-shell pour GTK4
+- `libgtk4-layer-shell.so` — Wayland layer-shell protocol for GTK4
 
 ### Build
 
@@ -25,94 +25,94 @@ cd rust
 cargo build --release
 ```
 
-Le binaire est généré dans `rust/target/release/alttab`.
+The binary is produced at `rust/target/release/alttab`.
 
 ### Installation
 
 ```bash
 sudo cp rust/target/release/alttab /usr/local/bin/alttab
-# ou dans le PATH utilisateur
+# or into the user PATH
 cp rust/target/release/alttab ~/.local/bin/alttab
 ```
 
 ---
 
-## Architecture Rust
+## Rust Architecture
 
 ```
 rust/
 ├── Cargo.toml
 └── src/
-    ├── main.rs       — dispatch des arguments CLI
-    ├── ipc.rs        — communication avec Hyprland via socket Unix
-    ├── daemon.rs     — mode daemon (serveur socket, spawn-guard)
-    ├── theme.rs      — lecture des couleurs depuis mako.ini
-    ├── windows.rs    — récupération et tri des fenêtres Hyprland
-    └── ui.rs         — overlay GTK4 (switcher visuel)
+    ├── main.rs       — CLI argument dispatch
+    ├── ipc.rs        — communication with Hyprland via Unix socket
+    ├── daemon.rs     — daemon mode (socket server, spawn-guard)
+    ├── theme.rs      — reads colors from mako.ini
+    ├── windows.rs    — fetches and sorts Hyprland windows
+    └── ui.rs         — GTK4 overlay (visual switcher)
 ```
 
-### Crates utilisées
+### Crates used
 
-| Crate | Version | Rôle |
+| Crate | Version | Role |
 |---|---|---|
-| `gtk4` | 0.11 | Bindings GTK 4 |
-| `gtk4-layer-shell` | 0.8 | Protocole Wayland layer-shell |
-| `gdk4` | 0.11 | Bindings GDK 4 (clavier, display) |
-| `gio` | 0.22 | GIO (AppInfo, icônes) |
-| `gio-unix` | 0.22 | `DesktopAppInfo` (lecture des `.desktop`) |
-| `glib` | 0.22 | Boucle d'événements GLib, timers |
-| `serde` + `serde_json` | 1 | Désérialisation du JSON Hyprland IPC |
-| `libc` | 0.2 | `getuid`, `kill`, redirection vers `/dev/null` |
+| `gtk4` | 0.11 | GTK 4 bindings |
+| `gtk4-layer-shell` | 0.8 | Wayland layer-shell protocol |
+| `gdk4` | 0.11 | GDK 4 bindings (keyboard, display) |
+| `gio` | 0.22 | GIO (AppInfo, icons) |
+| `gio-unix` | 0.22 | `DesktopAppInfo` (reads `.desktop` files) |
+| `glib` | 0.22 | GLib event loop, timers |
+| `serde` + `serde_json` | 1 | Deserialization of Hyprland IPC JSON |
+| `libc` | 0.2 | `getuid`, `kill`, redirection to `/dev/null` |
 
-### Points notables
+### Notable points
 
-**Pas de threads dans l'UI** — Le listener socket du switcher tourne en polling non-bloquant via `glib::timeout_add_local` (toutes les 16 ms). Cela évite les contraintes `Send` sur les objets GTK (`Rc<>`, `Cell<>`, closures locales).
+**No threads in the UI** — The switcher's socket listener runs via non-blocking polling using `glib::timeout_add_local` (every 16 ms). This avoids `Send` constraints on GTK objects (`Rc<>`, `Cell<>`, local closures).
 
-**Partage d'état** — Tout l'état mutable de l'UI est dans des `Rc<Cell<>>` / `Rc<RefCell<>>`. Les callbacks partagés (`activate`, `cleanup`, `update_sel`) sont des `Rc<dyn Fn()>` clonés par chaque gestionnaire d'événement.
+**State sharing** — All mutable UI state lives in `Rc<Cell<>>` / `Rc<RefCell<>>`. Shared callbacks (`activate`, `cleanup`, `update_sel`) are `Rc<dyn Fn()>` cloned by each event handler.
 
-**Layer-shell via trait** — `gtk4-layer-shell` 0.8 expose une interface en trait (`LayerShell`) plutôt qu'en fonctions libres. Utilisation : `use gtk4_layer_shell::LayerShell; window.init_layer_shell(); window.set_layer(...);`
+**Layer-shell via trait** — `gtk4-layer-shell` 0.8 exposes its interface as a trait (`LayerShell`) rather than free functions. Usage: `use gtk4_layer_shell::LayerShell; window.init_layer_shell(); window.set_layer(...);`
 
-**`gio-unix` pour les icônes** — `DesktopAppInfo` a été déplacé hors de `gio` dans la version 0.22. Il faut importer `gio_unix::DesktopAppInfo` séparément.
+**`gio-unix` for icons** — `DesktopAppInfo` was moved out of `gio` in version 0.22. You must import `gio_unix::DesktopAppInfo` separately.
 
-**`load_from_data` pour le CSS** — `CssProvider::load_from_string` est gated derrière `feature = "v4_12"`. On utilise `load_from_data(&str)` qui est disponible sans feature flag.
+**`load_from_data` for CSS** — `CssProvider::load_from_string` is gated behind `feature = "v4_12"`. We use `load_from_data(&str)`, which is available without any feature flag.
 
 ---
 
-## Interface CLI
+## CLI Interface
 
-Identique entre les deux implémentations :
+Identical between both implementations:
 
 ```
-alttab                      Lance le daemon si besoin, envoie "tab"
-alttab --daemon             Démarre le daemon en arrière-plan
-alttab --show               Affiche le switcher GTK4
-alttab --kill               Arrête le daemon
-alttab --focus-address ADDR Focus une fenêtre par adresse Hyprland
+alttab                      Starts the daemon if needed, sends "tab"
+alttab --daemon             Starts the daemon in the background
+alttab --show               Shows the GTK4 switcher
+alttab --kill               Stops the daemon
+alttab --focus-address ADDR Focus a window by Hyprland address
 ```
 
-### Fonctionnement
+### How it works
 
-1. Le keybind Hyprland appelle `alttab` (sans argument)
-2. Si le daemon n'est pas lancé, il est démarré automatiquement
-3. Le daemon reçoit `"tab"` sur son socket Unix
-4. S'il n'y a pas de switcher ouvert, il le spawn (`--show`)
-5. Si le switcher est déjà ouvert, il lui envoie `"next"` pour avancer la sélection
-6. Relâcher Alt ferme le switcher et focus la fenêtre sélectionnée
+1. The Hyprland keybind calls `alttab` (with no argument)
+2. If the daemon is not running, it is started automatically
+3. The daemon receives `"tab"` on its Unix socket
+4. If no switcher is open, it spawns one (`--show`)
+5. If a switcher is already open, it sends `"next"` to advance the selection
+6. Releasing Alt closes the switcher and focuses the selected window
 
-### Fichiers runtime
+### Runtime files
 
-Tous dans `$XDG_RUNTIME_DIR` (ex: `/run/user/1000/`) :
+All under `$XDG_RUNTIME_DIR` (e.g. `/run/user/1000/`):
 
-| Fichier | Rôle |
+| File | Role |
 |---|---|
-| `hypr-alttab.sock` | Socket du daemon |
-| `hypr-alttab-switcher.sock` | Socket du switcher actif |
-| `hypr-alttab-daemon.pid` | PID du daemon |
-| `hypr-alttab-switcher.pid` | PID du switcher actif |
+| `hypr-alttab.sock` | Daemon socket |
+| `hypr-alttab-switcher.sock` | Active switcher socket |
+| `hypr-alttab-daemon.pid` | Daemon PID |
+| `hypr-alttab-switcher.pid` | Active switcher PID |
 
-### Thème
+### Theme
 
-Les couleurs sont lues depuis `~/.config/omarchy/current/theme/mako.ini` :
+Colors are read from `~/.config/omarchy/current/theme/mako.ini`:
 
 ```ini
 background-color=#2c2525
@@ -120,11 +120,11 @@ border-color=#f38d70
 text-color=#e6d9db
 ```
 
-Les valeurs ci-dessus sont les défauts si le fichier est absent.
+The values above are the defaults if the file is missing.
 
 ---
 
-## Exemple de configuration Hyprland
+## Example Hyprland configuration
 
 ```conf
 # ~/.config/hypr/hyprland.conf
