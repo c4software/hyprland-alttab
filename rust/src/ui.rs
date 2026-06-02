@@ -1,3 +1,15 @@
+//! GTK4 layer-shell overlay for the Alt+Tab switcher.
+//!
+//! ## Threading model
+//!
+//! GTK objects are `!Send`, so no threads are used inside this module.
+//! Shared mutable state lives in `Rc<Cell<>>` / `Rc<RefCell<>>`.
+//! Shared callbacks are `Rc<dyn Fn()>` cloned into each event handler.
+//!
+//! The daemon socket is polled every 16 ms via `glib::timeout_add_local` on a
+//! non-blocking `UnixListener` instead of a background thread, keeping all GTK
+//! access on the main thread.
+
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::io::Read;
@@ -17,8 +29,15 @@ use crate::ipc::focus_window_after_exit;
 use crate::theme::parse_mako_colors;
 use crate::windows::{flat_windows, get_windows, WindowEntry};
 
-// ─── Icon ────────────────────────────────────────────────────────────────────
+// ─── Icon resolution ──────────────────────────────────────────────────────────
 
+/// Build an `Image` widget for a window's application class.
+///
+/// Resolution order:
+/// 1. `gio_unix::DesktopAppInfo` — looks up `<class>.desktop` under several
+///    case / dash / dot-part variants and returns the app's declared icon.
+/// 2. GTK icon theme search — tries the same name variants directly.
+/// 3. Generic `application-x-executable` fallback.
 fn make_icon_widget(cls: &str) -> Image {
     let img = Image::new();
     img.set_pixel_size(64);
@@ -27,10 +46,9 @@ fn make_icon_widget(cls: &str) -> Image {
     let no_dash   = cls.replace('-', "");
     let dot_part  = cls.split('.').next().unwrap_or(cls);
 
+    // 1. Try direct .desktop lookup by common name patterns (class, lowercase, no-dash, dot-prefix).
     for candidate in &[cls, cls_lower.as_str(), no_dash.as_str(), dot_part] {
-        if candidate.is_empty() {
-            continue;
-        }
+        if candidate.is_empty() { continue; }
         if let Some(app) = gio_unix::DesktopAppInfo::new(&format!("{}.desktop", candidate)) {
             if let Some(icon) = gio::prelude::AppInfoExt::icon(&app) {
                 img.set_from_gicon(&icon);
@@ -39,11 +57,31 @@ fn make_icon_widget(cls: &str) -> Image {
         }
     }
 
+    // 2. Scan all .desktop files for a StartupWMClass match.
+    //    JetBrains Toolbox appends a UUID to the .desktop filename
+    //    (e.g. jetbrains-webstorm-3cb3f5ef-….desktop) so the name-based
+    //    lookup above never finds it.  StartupWMClass is the authoritative
+    //    field that maps a window class to its .desktop entry.
+    for app_info in gio::AppInfo::all() {
+        if let Ok(dapp) = app_info.dynamic_cast::<gio_unix::DesktopAppInfo>() {
+            if dapp.startup_wm_class().map(|s| s.to_lowercase() == cls_lower).unwrap_or(false) {
+                if let Some(icon) = gio::prelude::AppInfoExt::icon(&dapp) {
+                    img.set_from_gicon(&icon);
+                    return img;
+                }
+            }
+        }
+    }
+
+    // 3. Fall back to searching the icon theme by name.
     if let Some(display) = gdk::Display::default() {
         let theme = gtk4::IconTheme::for_display(&display);
-        for name in &[cls, cls_lower.as_str(),
-                       cls.split('-').next().unwrap_or(cls),
-                       cls.split('.').last().unwrap_or(cls)] {
+        for name in &[
+            cls,
+            cls_lower.as_str(),
+            cls.split('-').next().unwrap_or(cls),
+            cls.split('.').last().unwrap_or(cls),
+        ] {
             if !name.is_empty() && theme.has_icon(name) {
                 img.set_icon_name(Some(name));
                 return img;
@@ -55,29 +93,42 @@ fn make_icon_widget(cls: &str) -> Image {
     img
 }
 
-// ─── build_window ─────────────────────────────────────────────────────────────
+// ─── Window builder ───────────────────────────────────────────────────────────
 
+/// Build and show the switcher overlay.
+///
+/// The window is a layer-shell `Overlay` surface that:
+/// - does **not** steal focus on map (`KeyboardMode::OnDemand`);
+/// - explicitly grabs keyboard focus after `present()` so key events work
+///   without interrupting the previously focused application.
+///
+/// Closing logic — whichever fires first wins:
+/// - Alt released (key-released handler or no-key timer after 150 ms)
+/// - Escape key
+/// - Mouse click on an icon
+/// - Pointer leaving the switcher surface (closes without focus change)
 fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
     let windows = flat_windows(&groups);
-    if windows.is_empty() {
-        return;
-    }
+    if windows.is_empty() { return; }
     let n = windows.len();
 
+    // Start selection on the second-most-recently used window (fhid > 0 minimum),
+    // which is the natural Alt+Tab target when the switcher first opens.
     let initial = windows.iter().enumerate()
         .filter(|(_, w)| w.4 > 0)
         .min_by_key(|(_, w)| w.4)
         .map(|(i, _)| i)
         .unwrap_or(0);
 
-    // ── Shared state (Rc, main-thread only) ───────────────────────────────
+    // ── Shared state (all Rc — GTK is single-threaded) ────────────────────
     let selected:     Rc<Cell<usize>>                  = Rc::new(Cell::new(initial));
     let held_keys:    Rc<RefCell<HashSet<gdk::Key>>>   = Rc::new(RefCell::new(HashSet::new()));
     let no_key_src:   Rc<Cell<Option<glib::SourceId>>> = Rc::new(Cell::new(None));
     let socket_src:   Rc<Cell<Option<glib::SourceId>>> = Rc::new(Cell::new(None));
     let frames:       Rc<RefCell<Vec<GtkBox>>>         = Rc::new(RefCell::new(Vec::new()));
     let windows_rc:   Rc<Vec<WindowEntry>>             = Rc::new(windows);
-    // true while the pointer is inside the switcher window
+    // Tracks whether the pointer is currently inside the switcher surface.
+    // When false, closing the switcher must not focus any window (Escape semantics).
     let mouse_inside: Rc<Cell<bool>>                   = Rc::new(Cell::new(true));
 
     // ── Window + layer shell ───────────────────────────────────────────────
@@ -89,8 +140,11 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
     window.init_layer_shell();
     window.set_namespace(Some("hypr-alttab"));
     window.set_layer(gtk4_layer_shell::Layer::Overlay);
-    // OnDemand: window does not steal focus on map; we grab it explicitly after present()
+    // OnDemand: the surface is mapped without grabbing the keyboard seat.
+    // We call grab_focus() explicitly after present() so the window receives
+    // key events while leaving the previously focused app visually active.
     window.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::OnDemand);
+    // No edge anchoring → the compositor centers the window.
     for edge in [gtk4_layer_shell::Edge::Top, gtk4_layer_shell::Edge::Bottom,
                  gtk4_layer_shell::Edge::Left, gtk4_layer_shell::Edge::Right] {
         window.set_anchor(edge, false);
@@ -116,8 +170,11 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
     title_label.set_margin_top(10);
     outer.append(&title_label);
 
-    // ── Helpers (defined before frame loop so closures can capture them) ──
+    // ── Shared callbacks ──────────────────────────────────────────────────
+    // Defined as `Rc<dyn Fn()>` so they can be cloned cheaply into multiple
+    // event handlers without requiring the closures themselves to be Clone.
 
+    // Highlight the currently selected frame and update the title label.
     let update_sel: Rc<dyn Fn()> = Rc::new({
         let frames     = Rc::clone(&frames);
         let windows_rc = Rc::clone(&windows_rc);
@@ -137,6 +194,7 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
         }
     });
 
+    // Cancel background timers and remove the socket / PID files.
     let cleanup_fn: Rc<dyn Fn()> = Rc::new({
         let no_key_src = Rc::clone(&no_key_src);
         let socket_src = Rc::clone(&socket_src);
@@ -148,6 +206,10 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
         }
     });
 
+    // Hide the window, cancel timers, quit GTK, and (if the pointer is inside
+    // the surface) delegate the actual window focus to a new `--focus-address`
+    // child process.  Focus delegation is necessary because `app.quit()` tears
+    // down the GLib main loop before IPC calls could complete in the same process.
     let activate_fn: Rc<dyn Fn()> = Rc::new({
         let window       = window.clone();
         let windows_rc   = Rc::clone(&windows_rc);
@@ -158,7 +220,7 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
         move || {
             window.set_visible(false);
             cleanup();
-            // If the pointer left the window, close without focusing anything (like Escape)
+            // Pointer left the window: close silently, no focus change.
             if !mouse_inside.get() {
                 app.quit();
                 return;
@@ -170,7 +232,7 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
         }
     });
 
-    // ── Populate frames + mouse controllers ───────────────────────────────
+    // ── Populate frames + per-icon mouse controllers ──────────────────────
     {
         let mut fr = frames.borrow_mut();
         let mut flat_idx: usize = 0;
@@ -207,24 +269,18 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
 
                 let idx = flat_idx;
 
-                // Hover → select (highlight) without activating
+                // Hover → update selection highlight without activating.
                 let hover = EventControllerMotion::new();
-                let sel_h  = Rc::clone(&selected);
-                let upd_h  = Rc::clone(&update_sel);
-                hover.connect_enter(move |_, _, _| {
-                    sel_h.set(idx);
-                    upd_h();
-                });
+                let sel_h = Rc::clone(&selected);
+                let upd_h = Rc::clone(&update_sel);
+                hover.connect_enter(move |_, _, _| { sel_h.set(idx); upd_h(); });
                 frame.add_controller(hover);
 
-                // Click → activate the hovered window
+                // Click → immediately activate the window under the cursor.
                 let click = GestureClick::new();
-                let sel_c  = Rc::clone(&selected);
-                let act_c  = Rc::clone(&activate_fn);
-                click.connect_released(move |_, _, _, _| {
-                    sel_c.set(idx);
-                    act_c();
-                });
+                let sel_c = Rc::clone(&selected);
+                let act_c = Rc::clone(&activate_fn);
+                click.connect_released(move |_, _, _, _| { sel_c.set(idx); act_c(); });
                 frame.add_controller(click);
 
                 icons_row.append(&frame);
@@ -236,10 +292,13 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
         }
     }
 
-    // Initial selection render
+    // Render the initial selection before the window becomes visible.
     update_sel();
 
-    // ── Socket (non-blocking polling) ─────────────────────────────────────
+    // ── Daemon socket (non-blocking polling) ──────────────────────────────
+    // A new per-switcher socket receives "next" from the daemon when the user
+    // presses Alt+Tab while the switcher is already open.  Polling every 16 ms
+    // gives ≤1-frame latency without needing a background thread.
     {
         let path = switcher_socket_path();
         let _ = std::fs::remove_file(&path);
@@ -269,6 +328,9 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
     }
 
     // ── No-key timer ──────────────────────────────────────────────────────
+    // Started immediately so that if the user releases Alt before any key
+    // event reaches the overlay (race with compositor focus grant), the
+    // switcher still closes.  The timer is reset on every key-press.
     {
         let activate  = Rc::clone(&activate_fn);
         let held_keys = Rc::clone(&held_keys);
@@ -276,6 +338,8 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
         let src_cell  = Rc::clone(&no_key_src);
         let src = glib::timeout_add_local(Duration::from_millis(150), move || {
             src_cell.set(None);
+            // Double-check GDK's modifier state to guard against the case where
+            // Alt was released but key_released was never delivered to us.
             let kb = gtk4::prelude::WidgetExt::display(&window2)
                 .default_seat()
                 .and_then(|s| s.keyboard());
@@ -290,7 +354,7 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
         no_key_src.set(Some(src));
     }
 
-    // ── Key controller ────────────────────────────────────────────────────
+    // ── Keyboard controller ───────────────────────────────────────────────
     {
         let ctrl = EventControllerKey::new();
 
@@ -303,6 +367,7 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
         let app1      = app.clone();
 
         ctrl.connect_key_pressed(move |_, keyval, _kc, _st| {
+            // A key was pressed → cancel the pending no-key timer.
             if let Some(src) = nk_src1.take() { src.remove(); }
 
             if keyval == gdk::Key::Escape {
@@ -335,6 +400,8 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
         let activate2 = Rc::clone(&activate_fn);
         ctrl.connect_key_released(move |_, keyval, _kc, state| {
             held2.borrow_mut().remove(&keyval);
+            // `state` still includes the modifier being released in this event,
+            // so we must subtract it manually to detect "Alt fully released".
             let alt_releasing = keyval == gdk::Key::Alt_L || keyval == gdk::Key::Alt_R;
             let alt_held = state.contains(gdk::ModifierType::ALT_MASK) && !alt_releasing;
             if held2.borrow().is_empty() && !alt_held {
@@ -346,8 +413,8 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
     }
 
     // ── Window-level pointer tracking ─────────────────────────────────────
-    // When the pointer leaves the switcher entirely, closing it should not
-    // activate any window (same as Escape).
+    // When the pointer leaves the switcher surface, the next close event
+    // (Alt release, timer, etc.) must not focus any window — same as Escape.
     {
         let motion = EventControllerMotion::new();
         let mi_enter = Rc::clone(&mouse_inside);
@@ -358,13 +425,19 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
     }
 
     window.present();
-    // Explicitly request keyboard focus after the surface is mapped,
-    // so we receive key events without having stolen focus on map.
+    // Explicitly request keyboard focus after the surface is mapped.
+    // With KeyboardMode::OnDemand the compositor does not grant the keyboard
+    // seat automatically; grab_focus() triggers the grant without visually
+    // stealing focus from the previously active window.
     window.grab_focus();
 }
 
-// ─── run_switcher ─────────────────────────────────────────────────────────────
+// ─── Public entry point ───────────────────────────────────────────────────────
 
+/// Initialize GTK, load CSS, and run the switcher overlay.
+///
+/// This function blocks until the switcher is closed (Alt released, Escape,
+/// or click).  It is called as `alttab --show` from the daemon.
 pub fn run_switcher() {
     let groups = get_windows();
     if flat_windows(&groups).is_empty() {
@@ -379,6 +452,8 @@ pub fn run_switcher() {
         .build();
 
     app.connect_activate(move |app| {
+        // Disable animations: the overlay appears and disappears instantly,
+        // so animations would only add perceived latency.
         if let Some(settings) = gtk4::Settings::default() {
             settings.set_gtk_enable_animations(false);
         }
@@ -399,6 +474,8 @@ pub fn run_switcher() {
         );
 
         let css = CssProvider::new();
+        // load_from_data is used instead of load_from_string because
+        // load_from_string is gated behind the "v4_12" feature flag.
         css.load_from_data(&css_str);
         gtk4::style_context_add_provider_for_display(
             &gdk::Display::default().unwrap(),

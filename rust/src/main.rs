@@ -1,3 +1,23 @@
+//! # hyprland-alttab
+//!
+//! Alt+Tab window switcher for Hyprland using a GTK4 layer-shell overlay.
+//!
+//! ## Architecture
+//!
+//! ```text
+//! alttab (default)
+//!   └─ starts daemon if needed, then sends "tab"
+//!
+//! alttab --daemon          long-lived socket server, spawns --show on demand
+//! alttab --show            one-shot GTK4 overlay (runs until Alt is released)
+//! alttab --focus-address   called by the overlay after GTK quits to focus a window
+//! alttab --kill            graceful daemon shutdown
+//! ```
+//!
+//! The focus call is split into a separate `--focus-address` invocation because
+//! `app.quit()` tears down the GLib event loop before any post-quit Hyprland IPC
+//! could run inside the same process.
+
 extern crate gio_unix;
 mod daemon;
 mod ipc;
@@ -32,7 +52,7 @@ fn main() {
         return;
     }
 
-    // default: ensure daemon is running, then send "tab"
+    // Default: ensure daemon is running, then signal it to open/advance the switcher.
     if !daemon::is_daemon_running() {
         daemon::start_daemon();
     }
