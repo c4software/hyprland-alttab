@@ -71,12 +71,14 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
         .unwrap_or(0);
 
     // ── Shared state (Rc, main-thread only) ───────────────────────────────
-    let selected:   Rc<Cell<usize>>                  = Rc::new(Cell::new(initial));
-    let held_keys:  Rc<RefCell<HashSet<gdk::Key>>>   = Rc::new(RefCell::new(HashSet::new()));
-    let no_key_src: Rc<Cell<Option<glib::SourceId>>> = Rc::new(Cell::new(None));
-    let socket_src: Rc<Cell<Option<glib::SourceId>>> = Rc::new(Cell::new(None));
-    let frames:     Rc<RefCell<Vec<GtkBox>>>         = Rc::new(RefCell::new(Vec::new()));
-    let windows_rc: Rc<Vec<WindowEntry>>             = Rc::new(windows);
+    let selected:     Rc<Cell<usize>>                  = Rc::new(Cell::new(initial));
+    let held_keys:    Rc<RefCell<HashSet<gdk::Key>>>   = Rc::new(RefCell::new(HashSet::new()));
+    let no_key_src:   Rc<Cell<Option<glib::SourceId>>> = Rc::new(Cell::new(None));
+    let socket_src:   Rc<Cell<Option<glib::SourceId>>> = Rc::new(Cell::new(None));
+    let frames:       Rc<RefCell<Vec<GtkBox>>>         = Rc::new(RefCell::new(Vec::new()));
+    let windows_rc:   Rc<Vec<WindowEntry>>             = Rc::new(windows);
+    // true while the pointer is inside the switcher window
+    let mouse_inside: Rc<Cell<bool>>                   = Rc::new(Cell::new(true));
 
     // ── Window + layer shell ───────────────────────────────────────────────
     let window = ApplicationWindow::builder()
@@ -147,16 +149,22 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
     });
 
     let activate_fn: Rc<dyn Fn()> = Rc::new({
-        let window     = window.clone();
-        let windows_rc = Rc::clone(&windows_rc);
-        let selected   = Rc::clone(&selected);
-        let cleanup    = Rc::clone(&cleanup_fn);
-        let app        = app.clone();
+        let window       = window.clone();
+        let windows_rc   = Rc::clone(&windows_rc);
+        let selected     = Rc::clone(&selected);
+        let cleanup      = Rc::clone(&cleanup_fn);
+        let app          = app.clone();
+        let mouse_inside = Rc::clone(&mouse_inside);
         move || {
-            if windows_rc.is_empty() { return; }
-            let addr = windows_rc[selected.get()].2.clone();
             window.set_visible(false);
             cleanup();
+            // If the pointer left the window, close without focusing anything (like Escape)
+            if !mouse_inside.get() {
+                app.quit();
+                return;
+            }
+            if windows_rc.is_empty() { app.quit(); return; }
+            let addr = windows_rc[selected.get()].2.clone();
             app.quit();
             focus_window_after_exit(&addr);
         }
@@ -335,6 +343,18 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
         });
 
         window.add_controller(ctrl);
+    }
+
+    // ── Window-level pointer tracking ─────────────────────────────────────
+    // When the pointer leaves the switcher entirely, closing it should not
+    // activate any window (same as Escape).
+    {
+        let motion = EventControllerMotion::new();
+        let mi_enter = Rc::clone(&mouse_inside);
+        let mi_leave = Rc::clone(&mouse_inside);
+        motion.connect_enter(move |_, _, _| { mi_enter.set(true); });
+        motion.connect_leave(move |_| { mi_leave.set(false); });
+        window.add_controller(motion);
     }
 
     window.present();
