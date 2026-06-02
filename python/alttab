@@ -1,0 +1,676 @@
+#!/usr/bin/env -S LD_PRELOAD=/usr/lib/libgtk4-layer-shell.so python3
+import sys, gi, os, socket, subprocess, threading, time
+gi.require_version("Gtk", "4.0")
+gi.require_version("Gtk4LayerShell", "1.0")
+gi.require_version("GioUnix", "2.0")
+from gi.repository import Gtk, Gdk, GLib, Gtk4LayerShell, Gio, GioUnix
+
+# ─── Paths ────────────────────────────────────────────────────────────────────
+
+_RUNTIME_DIR         = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+SOCKET_PATH          = os.path.join(_RUNTIME_DIR, "hypr-alttab.sock")
+SWITCHER_SOCKET_PATH = os.path.join(_RUNTIME_DIR, "hypr-alttab-switcher.sock")
+DAEMON_PIDFILE       = os.path.join(_RUNTIME_DIR, "hypr-alttab-daemon.pid")
+SWITCHER_PIDFILE     = os.path.join(_RUNTIME_DIR, "hypr-alttab-switcher.pid")
+
+MAKO_INI_PATH = os.path.expanduser("~/.config/omarchy/current/theme/mako.ini")
+
+_spawn_guard_ts: float = 0.0
+_tab_lock = threading.Lock()
+_SPAWN_GUARD_S = 0.5    # prevent double-spawn while GTK is initializing
+
+def _hypr_socket_path() -> str:
+    sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+    if not sig:
+        raise RuntimeError("HYPRLAND_INSTANCE_SIGNATURE is not set")
+    return os.path.join(_RUNTIME_DIR, "hypr", sig, ".socket.sock")
+
+def hypr_request(payload: str) -> str:
+    """Send a raw request to Hyprland command IPC socket and return text reply."""
+    sock_path = _hypr_socket_path()
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.connect(sock_path)
+        s.sendall(payload.encode())
+        s.shutdown(socket.SHUT_WR)
+        chunks = []
+        while True:
+            data = s.recv(4096)
+            if not data:
+                break
+            chunks.append(data)
+    return b"".join(chunks).decode(errors="replace")
+
+def hypr_request_json(command: str):
+    import json
+    return json.loads(hypr_request(f"j/{command}"))
+
+def hypr_dispatch(command: str) -> str:
+    return hypr_request(f"dispatch {command}")
+
+def focus_window_by_address(addr: str) -> bool:
+    """Focus a window robustly via IPC, including grouped/hidden members."""
+    candidates = [
+        f"focuswindow address:{addr}",
+        f"focuswindow address:^{addr}$",
+    ]
+
+    for cmd in candidates:
+        try:
+            if hypr_dispatch(cmd).strip().lower() == "ok":
+                return True
+        except Exception:
+            pass
+
+    # If the target is on another workspace, move there then retry.
+    try:
+        clients = hypr_request_json("clients")
+        target = next((c for c in clients if c.get("address") == addr), None)
+        if target:
+            ws_id = target["workspace"]["id"]
+            hypr_dispatch(f"workspace {ws_id}")
+            for cmd in candidates:
+                try:
+                    if hypr_dispatch(cmd).strip().lower() == "ok":
+                        return True
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    return False
+
+def focus_window_after_exit(addr: str) -> None:
+    """Run focus in a detached child once the switcher has started closing."""
+    try:
+        subprocess.Popen(
+            [
+                os.path.abspath(sys.argv[0]),
+                "--focus-address",
+                addr,
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
+        )
+    except Exception:
+        pass
+
+def _env_with_layer_shell_preload() -> dict[str, str]:
+    env = os.environ.copy()
+    lib = "/usr/lib/libgtk4-layer-shell.so"
+    preload = env.get("LD_PRELOAD", "")
+    parts = [p for p in preload.split(":") if p]
+    if lib not in parts:
+        parts.insert(0, lib)
+        env["LD_PRELOAD"] = ":".join(parts)
+    return env
+
+# ─── Theme ────────────────────────────────────────────────────────────────────
+
+def parse_mako_colors():
+    defaults = {
+        "background-color": "#2c2525",
+        "border-color":     "#f38d70",
+        "text-color":       "#e6d9db",
+    }
+    try:
+        with open(MAKO_INI_PATH) as f:
+            for line in f:
+                line = line.strip()
+                for key in defaults:
+                    if line.startswith(f"{key}="):
+                        defaults[key] = line.split("=", 1)[1].strip()
+    except Exception:
+        pass
+    return defaults
+
+THEME = parse_mako_colors()
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+def get_windows():
+    """
+    Retourne une liste de groupes par workspace :
+    [ (ws_name, [ (class, title, address, hidden), ... ]), ... ]
+    Workspace actif en premier, puis les autres par ID.
+    Dans chaque workspace : fenêtre active (focusHistoryID=0) en tête,
+    puis les autres du plus récent au plus ancien.
+    Les fenêtres hidden (membres d'un groupe Hyprland) sont incluses —
+    hyprctl dispatch focuswindow address:... les ramène au premier plan.
+    """
+    clients = hypr_request_json("clients")
+
+    active_ws_id = None
+    try:
+        active_info = hypr_request_json("activeworkspace")
+        active_ws_id = active_info["id"]
+    except Exception:
+        pass
+
+    # Grouper par workspace (toutes fenêtres, y compris hidden)
+    ws_map: dict[int, dict] = {}
+    for c in clients:
+        if c.get("pinned", False):
+            continue
+        ws_id   = c["workspace"]["id"]
+        ws_name = c["workspace"]["name"]
+        if ws_id not in ws_map:
+            ws_map[ws_id] = {"name": ws_name, "clients": []}
+        ws_map[ws_id]["clients"].append(c)
+
+    # Trier les workspaces : actif en premier, puis par ID croissant
+    ws_ids = sorted(ws_map.keys(), key=lambda i: (0 if i == active_ws_id else 1, i))
+
+    groups = []
+    for ws_id in ws_ids:
+        ws      = ws_map[ws_id]
+        clients_sorted = (
+            [c for c in ws["clients"] if c["focusHistoryID"] == 0] +
+            sorted((c for c in ws["clients"] if c["focusHistoryID"] != 0),
+                   key=lambda c: c["focusHistoryID"])
+        )
+        entries = [
+            (c["class"], c["title"] or "-", c["address"], c.get("hidden", False), c["focusHistoryID"])
+            for c in clients_sorted
+        ]
+        groups.append((ws["name"], entries))
+
+    return groups
+
+def flat_windows(groups):
+    """Liste plate de toutes les fenêtres pour la navigation."""
+    return [entry for _, entries in groups for entry in entries]
+
+def _find_app(cls: str) -> GioUnix.DesktopAppInfo | None:
+    cls_lower = cls.lower()
+    for candidate in [cls, cls_lower, cls.replace("-", ""), cls.split(".")[0]]:
+        try:
+            app = GioUnix.DesktopAppInfo.new(f"{candidate}.desktop")
+            if app:
+                return app
+        except Exception:
+            pass
+    return next(
+        (a for a in Gio.AppInfo.get_all()
+         if isinstance(a, GioUnix.DesktopAppInfo)
+         and (a.get_startup_wm_class() or "").lower() == cls_lower),
+        None
+    )
+
+def make_icon_widget(cls: str) -> Gtk.Image:
+    theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+    img = Gtk.Image()
+    img.set_pixel_size(64)
+    app = _find_app(cls)
+    if app:
+        gicon = app.get_icon()
+        if gicon:
+            img.set_from_gicon(gicon)
+            return img
+    for candidate in [cls, cls.lower(), cls.split("-")[0], cls.split(".")[-1]]:
+        if candidate and theme.has_icon(candidate):
+            img.set_from_icon_name(candidate)
+            return img
+    img.set_from_icon_name("application-x-executable")
+    return img
+
+# ─── Daemon ───────────────────────────────────────────────────────────────────
+
+def start_daemon():
+    try:
+        subprocess.Popen(
+            [os.path.abspath(sys.argv[0]), "--daemon"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
+            env=_env_with_layer_shell_preload(),
+        )
+    except Exception:
+        return
+
+    for _ in range(40):
+        time.sleep(0.05)
+        if os.path.exists(SOCKET_PATH):
+            return
+
+def run_daemon_loop():
+    with open("/dev/null", "w") as devnull:
+        os.dup2(devnull.fileno(), sys.stdout.fileno())
+        os.dup2(devnull.fileno(), sys.stderr.fileno())
+
+    with open(DAEMON_PIDFILE, "w") as f:
+        f.write(str(os.getpid()))
+
+    if os.path.exists(SOCKET_PATH):
+        os.unlink(SOCKET_PATH)
+
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(SOCKET_PATH)
+    srv.listen(5)
+
+    while True:
+        try:
+            conn, _ = srv.accept()
+            msg = conn.recv(64).decode().strip()
+            conn.close()
+            if msg == "quit":
+                break
+            threading.Thread(target=handle_message, args=(msg,), daemon=True).start()
+        except Exception:
+            break
+
+    srv.close()
+    for path in (SOCKET_PATH, DAEMON_PIDFILE):
+        if os.path.exists(path):
+            os.unlink(path)
+    os._exit(0)
+
+def _spawn_switcher() -> None:
+    try:
+        subprocess.Popen(
+            [os.path.abspath(sys.argv[0]), "--show"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
+            env=_env_with_layer_shell_preload(),
+        )
+    except Exception:
+        pass
+
+def handle_message(msg):
+    global _spawn_guard_ts
+    if msg != "tab":
+        return
+
+    now = time.monotonic()
+
+    if is_switcher_running():
+        try_send_next()
+        return
+
+    with _tab_lock:
+        if now - _spawn_guard_ts < _SPAWN_GUARD_S:
+            return
+        _spawn_guard_ts = now
+    _spawn_switcher()
+
+def is_daemon_running():
+    if not os.path.exists(DAEMON_PIDFILE):
+        return False
+    try:
+        with open(DAEMON_PIDFILE) as f:
+            pid = int(f.read().strip())
+        os.kill(pid, 0)
+        return True
+    except (ProcessLookupError, ValueError, FileNotFoundError):
+        return False
+
+def is_switcher_running():
+    if not os.path.exists(SWITCHER_PIDFILE):
+        return False
+    try:
+        with open(SWITCHER_PIDFILE) as f:
+            pid = int(f.read().strip())
+        os.kill(pid, 0)
+        return True
+    except (ProcessLookupError, ValueError, FileNotFoundError):
+        return False
+
+def send_to_daemon(msg):
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.connect(SOCKET_PATH)
+        s.sendall(msg.encode())
+        s.close()
+        return True
+    except (ConnectionRefusedError, FileNotFoundError):
+        return False
+
+def try_send_next():
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.connect(SWITCHER_SOCKET_PATH)
+        s.sendall(b"next")
+        s.close()
+        return True
+    except (ConnectionRefusedError, FileNotFoundError):
+        return False
+
+def kill_daemon():
+    if send_to_daemon("quit"):
+        for _ in range(20):
+            time.sleep(0.05)
+            if not os.path.exists(SOCKET_PATH):
+                break
+    else:
+        if os.path.exists(DAEMON_PIDFILE):
+            try:
+                with open(DAEMON_PIDFILE) as f:
+                    pid = int(f.read().strip())
+                os.kill(pid, 15)  # SIGTERM
+            except Exception:
+                pass
+            os.unlink(DAEMON_PIDFILE)
+
+# ─── GTK Switcher ─────────────────────────────────────────────────────────────
+
+class AltTabWindow(Gtk.ApplicationWindow):
+    def __init__(self, app, groups):
+        super().__init__(application=app)
+        self.groups  = groups
+        self.windows = flat_windows(groups)
+        # Sélectionner la fenêtre globalement précédente (fhid le plus bas > 0),
+        # pas juste la 2ème de la liste (qui peut être sur le même workspace).
+        non_zero = [(i, w[4]) for i, w in enumerate(self.windows) if w[4] > 0]
+        self.selected = min(non_zero, key=lambda x: x[1])[0] if non_zero else 0
+        self.set_decorated(False)
+
+        Gtk4LayerShell.init_for_window(self)
+        Gtk4LayerShell.set_namespace(self, "hypr-alttab")
+        Gtk4LayerShell.set_layer(self, Gtk4LayerShell.Layer.OVERLAY)
+        Gtk4LayerShell.set_keyboard_mode(self, Gtk4LayerShell.KeyboardMode.EXCLUSIVE)
+        for edge in [Gtk4LayerShell.Edge.TOP, Gtk4LayerShell.Edge.BOTTOM,
+                     Gtk4LayerShell.Edge.LEFT, Gtk4LayerShell.Edge.RIGHT]:
+            Gtk4LayerShell.set_anchor(self, edge, False)
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        outer.set_margin_top(20)
+        outer.set_margin_bottom(20)
+        outer.set_margin_start(20)
+        outer.set_margin_end(20)
+        self.set_child(outer)
+
+        # Conteneur principal : groupes côte à côte
+        self.groups_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        self.groups_box.set_halign(Gtk.Align.CENTER)
+        self.groups_box.set_hexpand(True)
+        outer.append(self.groups_box)
+
+        self.title_label = Gtk.Label()
+        self.title_label.set_halign(Gtk.Align.CENTER)
+        self.title_label.set_ellipsize(3)
+        self.title_label.set_max_width_chars(60)
+        self.title_label.set_margin_top(10)
+        outer.append(self.title_label)
+
+        # Référence plate sur les frames icônes pour la sélection
+        self._frames: list[Gtk.Box] = []
+        self._held_keys: set[int] = set()
+        self._no_key_timer: int | None = None
+
+        self._rebuild()
+
+        ctrl = Gtk.EventControllerKey()
+        ctrl.connect("key-pressed", self.on_key)
+        ctrl.connect("key-released", self.on_key_release)
+        self.add_controller(ctrl)
+
+        self._start_socket()
+        self._no_key_timer = GLib.timeout_add(150, self._on_no_key_timeout)
+
+    def _on_no_key_timeout(self):
+        self._no_key_timer = None
+        try:
+            kb = self.get_display().get_default_seat().get_keyboard()
+            gdk_alt = bool(kb.get_modifier_state() & Gdk.ModifierType.ALT_MASK) if kb else False
+        except Exception:
+            gdk_alt = False
+        if not self._held_keys and not gdk_alt:
+            self._activate()
+        return False
+
+    def _start_socket(self):
+        if os.path.exists(SWITCHER_SOCKET_PATH):
+            os.unlink(SWITCHER_SOCKET_PATH)
+        self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self._sock.bind(SWITCHER_SOCKET_PATH)
+        self._sock.listen(1)
+        t = threading.Thread(target=self._socket_listener, daemon=True)
+        t.start()
+
+    def _socket_listener(self):
+        while True:
+            try:
+                conn, _ = self._sock.accept()
+                msg = conn.recv(16).decode()
+                conn.close()
+                if msg == "next":
+                    GLib.idle_add(self._on_next_signal)
+            except Exception:
+                break
+
+    def _on_next_signal(self):
+        self._select(self.selected + 1)
+        return False
+
+    def _cleanup(self):
+        if self._no_key_timer is not None:
+            GLib.source_remove(self._no_key_timer)
+            self._no_key_timer = None
+        try:
+            self._sock.close()
+        except Exception:
+            pass
+        for path in (SWITCHER_SOCKET_PATH, SWITCHER_PIDFILE):
+            if os.path.exists(path):
+                os.unlink(path)
+
+    def _rebuild(self):
+        while True:
+            child = self.groups_box.get_first_child()
+            if child is None:
+                break
+            self.groups_box.remove(child)
+        self._frames.clear()
+
+        flat_idx = 0
+        for ws_idx, (ws_name, entries) in enumerate(self.groups):
+
+            # Séparateur vertical entre workspaces
+            if ws_idx > 0:
+                sep = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+                sep.set_margin_start(8)
+                sep.set_margin_end(8)
+                self.groups_box.append(sep)
+
+            # Colonne : label workspace + icônes
+            col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            col.set_margin_start(8)
+            col.set_margin_end(8)
+
+            ws_label = Gtk.Label(label=ws_name)
+            ws_label.add_css_class("ws-label")
+            ws_label.set_margin_bottom(4)
+            col.append(ws_label)
+
+            icons_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            icons_row.set_halign(Gtk.Align.CENTER)
+            col.append(icons_row)
+
+            for cls, title, addr, hidden, _fhid in entries:
+                i = flat_idx
+                frame = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+                frame.set_margin_top(4)
+                frame.set_margin_bottom(4)
+                frame.set_margin_start(4)
+                frame.set_margin_end(4)
+                frame.add_css_class("icon-frame")
+
+                frame.append(make_icon_widget(cls))
+
+                if hidden:
+                    frame.add_css_class("grouped-icon")
+
+                icons_row.append(frame)
+                self._frames.append(frame)
+                flat_idx += 1
+
+            self.groups_box.append(col)
+
+        self._update_selection()
+
+    def _update_selection(self):
+        if not self.windows:
+            self.title_label.set_text("")
+            return
+
+        if not self._frames:
+            self.title_label.set_text("")
+            return
+
+        # Keep selection valid even under rapid external next signals.
+        self.selected %= len(self._frames)
+
+        selected_found = False
+        for i, frame in enumerate(self._frames):
+            if i == self.selected:
+                frame.add_css_class("selected-icon")
+                selected_found = True
+            else:
+                frame.remove_css_class("selected-icon")
+
+        if not selected_found:
+            self.selected = 0
+            self._frames[0].add_css_class("selected-icon")
+
+        cls, title, _, _hidden, _fhid = self.windows[self.selected]
+        self.title_label.set_text(f"{cls}  —  {title}")
+        
+    def _select(self, idx):
+        if not self.windows:
+            return
+        self.selected = idx % len(self.windows)
+        self._update_selection()
+
+    def on_key(self, ctrl, keyval, keycode, state):
+        if self._no_key_timer is not None:
+            GLib.source_remove(self._no_key_timer)
+            self._no_key_timer = None
+        if keyval == Gdk.KEY_Escape:
+            self._cleanup()
+            self.get_application().quit()
+            return True
+        self._held_keys.add(keyval)
+        if keyval in (Gdk.KEY_Tab, Gdk.KEY_Right):
+            self._select(self.selected + 1)
+            return True
+        if keyval in (Gdk.KEY_ISO_Left_Tab, Gdk.KEY_Left):
+            self._select(self.selected - 1)
+            return True
+        if keyval == Gdk.KEY_Return:
+            self._activate()
+            return True
+        return False
+
+    def on_key_release(self, ctrl, keyval, keycode, state):
+        self._held_keys.discard(keyval)
+        alt_releasing = keyval in (Gdk.KEY_Alt_L, Gdk.KEY_Alt_R)
+        alt_still_held = bool(state & Gdk.ModifierType.ALT_MASK) and not alt_releasing
+        if not self._held_keys and not alt_still_held:
+            self._activate()
+        return False
+
+    def _activate(self):
+        if not self.windows:
+            return
+        _, _, addr, _hidden, _fhid = self.windows[self.selected]
+        # Close the layer-shell switcher first, then focus the real target.
+        self.set_visible(False)
+        self._cleanup()
+        self.get_application().quit()
+        focus_window_after_exit(addr)
+
+class AltTabApp(Gtk.Application):
+    def __init__(self, groups):
+        super().__init__(application_id="org.hypr.alttab")
+        self.groups = groups
+        self.connect("activate", self.on_activate)
+
+    def on_activate(self, app):
+        settings = Gtk.Settings.get_default()
+        if settings is not None:
+            settings.set_property("gtk-enable-animations", False)
+
+        bg     = THEME["background-color"]
+        border = THEME["border-color"]
+        text   = THEME["text-color"]
+
+        css = Gtk.CssProvider()
+        css.load_from_string(f"""
+            window {{
+                background-color: {bg};
+                border: 2px solid {border};
+                border-radius: 16px;
+            }}
+            label {{
+                color: {text};
+            }}
+            .ws-label {{
+                color: alpha({text}, 0.5);
+                font-size: 11px;
+            }}
+            .icon-frame {{
+                padding: 10px 12px;
+                border-radius: 12px;
+            }}
+            .selected-icon {{
+                background-color: alpha({border}, 0.25);
+            }}
+            .selected-icon:hover {{
+                background-color: alpha({border}, 0.4);
+            }}
+            .grouped-icon {{
+                opacity: 0.75;
+                border: 1px solid alpha({border}, 0.45);
+                border-radius: 8px;
+            }}
+        """)
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(),
+            css,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+        win = AltTabWindow(app, self.groups)
+        win.present()
+
+# ─── Entry point ──────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    if "--daemon" in sys.argv:
+        run_daemon_loop()
+        sys.exit(0)
+
+    if "--focus-address" in sys.argv:
+        try:
+            addr = sys.argv[sys.argv.index("--focus-address") + 1]
+        except (ValueError, IndexError):
+            sys.exit(1)
+
+        focus_window_by_address(addr)
+        sys.exit(0)
+
+    if "--kill" in sys.argv:
+        kill_daemon()
+        sys.exit(0)
+
+    if "--show" in sys.argv:
+        groups = get_windows()
+        if flat_windows(groups):
+            with open(SWITCHER_PIDFILE, "w") as f:
+                f.write(str(os.getpid()))
+            app = AltTabApp(groups)
+            app.run(None)
+        if os.path.exists(SWITCHER_PIDFILE):
+            os.unlink(SWITCHER_PIDFILE)
+        sys.exit(0)
+
+    if not is_daemon_running():
+        start_daemon()
+
+    send_to_daemon("tab")

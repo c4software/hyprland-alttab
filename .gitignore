@@ -1,0 +1,18 @@
+# Rust
+rust/target/
+rust/**/*.rs.bk
+Cargo.lock
+
+# Python
+python/__pycache__/
+python/**/__pycache__/
+python/*.pyc
+python/**/*.pyc
+python/.venv/
+python/venv/
+python/*.egg-info/
+python/dist/
+python/build/
+python/.pytest_cache/
+python/.mypy_cache/
+python/.ruff_cache/

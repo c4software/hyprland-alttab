@@ -1,0 +1,98 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build (linux/x86-64)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── System deps ────────────────────────────────────────────────────────
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev \
+            libwayland-dev \
+            wayland-protocols \
+            meson \
+            ninja-build \
+            pkg-config \
+            git
+
+      # gtk4-layer-shell is not in Ubuntu 24.04 repos — build from source
+      - name: Build gtk4-layer-shell from source
+        run: |
+          git clone --depth 1 --branch v1.0.3 \
+            https://github.com/wmww/gtk4-layer-shell.git /tmp/gtk4-layer-shell
+          meson setup /tmp/gtk4-layer-shell/build /tmp/gtk4-layer-shell \
+            -Dexamples=false -Ddocs=false -Dtests=false
+          ninja -C /tmp/gtk4-layer-shell/build
+          sudo ninja -C /tmp/gtk4-layer-shell/build install
+          sudo ldconfig
+
+      # ── Rust ───────────────────────────────────────────────────────────────
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      # ── Build ──────────────────────────────────────────────────────────────
+      - name: Build release binary
+        working-directory: rust
+        run: cargo build --release --locked
+
+      - name: Strip binary
+        run: strip rust/target/release/alttab
+
+      # ── Artifact (kept for the release job) ───────────────────────────────
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: alttab-linux-x86_64
+          path: rust/target/release/alttab
+          retention-days: 1
+
+  # ── GitHub Release (tags only) ─────────────────────────────────────────────
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-24.04
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: alttab-linux-x86_64
+          path: dist/
+
+      - name: Rename binary with target suffix
+        run: mv dist/alttab dist/alttab-x86_64-linux-gnu
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/alttab-x86_64-linux-gnu
+          generate_release_notes: true
+          fail_on_unmatched_files: true
