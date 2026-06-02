@@ -1,7 +1,47 @@
 # hyprland-alttab
 
-Alt+Tab window switcher for Hyprland, with a GTK4 layer-shell overlay.  
-Available in two identical implementations: Python (original) and Rust.
+A visual **Alt+Tab window switcher** for the [Hyprland](https://hyprland.org/) Wayland compositor,
+built as a GTK4 layer-shell overlay.
+
+The same behavior is provided by two independent implementations — a **Rust** release binary and
+a **Python** prototype — sharing an identical CLI and runtime protocol.
+
+## Features
+
+- 🪟 **Visual switcher** rendered through `gtk4-layer-shell` — no compositor plugin required
+- 🖼️ **App icons** resolved from `.desktop` files (case / dash / dot variants, with `StartupWMClass` fallback)
+- 🎨 **Themed** by reading colors from your Omarchy `mako.ini` (sensible defaults if absent)
+- ⚡ **Single-command daemon** — first call spawns a long-lived daemon; later calls just send `tab` over a Unix socket
+- 🧵 **Thread-free UI** (Rust) — socket polling runs on the GLib main loop via `glib::timeout_add_local`
+- 📦 **Release builds** published automatically as Linux x86_64 binaries on tagged commits
+
+## Install
+
+Bind it in your Hyprland config and build the binary:
+
+```conf
+# ~/.config/hypr/hyprland.conf
+bind = ALT, Tab, exec, alttab
+```
+
+```bash
+# Arch
+sudo pacman -S gtk4 gtk4-layer-shell rust
+cd rust && cargo build --release
+sudo cp target/release/alttab /usr/local/bin/
+```
+
+Or download a prebuilt binary.
+
+## CLI
+
+```
+alttab              Start the daemon if needed, then signal "tab" (bind this to Alt+Tab)
+alttab --daemon     Run the daemon in the foreground
+alttab --show       Open the GTK4 switcher (one-shot)
+alttab --kill       Stop the daemon
+alttab --focus-address ADDR   Focus a window by Hyprland address
+```
 
 ---
 
