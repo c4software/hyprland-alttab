@@ -11,6 +11,7 @@ jobs:
   build:
     name: Build (linux/x86-64)
     runs-on: ubuntu-24.04
+    container: archlinux:latest
 
     steps:
       - uses: actions/checkout@v4
@@ -18,26 +19,12 @@ jobs:
       # ── System deps ────────────────────────────────────────────────────────
       - name: Install build dependencies
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            libgtk-4-dev \
-            libwayland-dev \
-            wayland-protocols \
-            meson \
-            ninja-build \
-            pkg-config \
-            git
-
-      # gtk4-layer-shell is not in Ubuntu 24.04 repos — build from source
-      - name: Build gtk4-layer-shell from source
-        run: |
-          git clone --depth 1 --branch v1.0.3 \
-            https://github.com/wmww/gtk4-layer-shell.git /tmp/gtk4-layer-shell
-          meson setup /tmp/gtk4-layer-shell/build /tmp/gtk4-layer-shell \
-            -Dexamples=false -Ddocs=false -Dtests=false
-          ninja -C /tmp/gtk4-layer-shell/build
-          sudo ninja -C /tmp/gtk4-layer-shell/build install
-          sudo ldconfig
+          pacman -Sy --noconfirm --needed \
+            base-devel \
+            gtk4 \
+            gtk4-layer-shell \
+            pkgconf \
+            curl
 
       # ── Rust ───────────────────────────────────────────────────────────────
       - name: Install Rust stable
