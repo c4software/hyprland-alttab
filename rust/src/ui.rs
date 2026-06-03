@@ -144,6 +144,10 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
     let held_keys:    Rc<RefCell<HashSet<gdk::Key>>>   = Rc::new(RefCell::new(HashSet::new()));
     let no_key_src:   Rc<Cell<Option<glib::SourceId>>> = Rc::new(Cell::new(None));
     let socket_src:   Rc<Cell<Option<glib::SourceId>>> = Rc::new(Cell::new(None));
+    let poll_src:     Rc<Cell<Option<glib::SourceId>>> = Rc::new(Cell::new(None));
+    // Guard against activate_fn being called twice (e.g. key_released and poll
+    // timer firing in the same GLib iteration).
+    let closed:       Rc<Cell<bool>>                   = Rc::new(Cell::new(false));
     let frames:       Rc<RefCell<Vec<GtkBox>>>         = Rc::new(RefCell::new(Vec::new()));
     let windows_rc:   Rc<Vec<WindowEntry>>             = Rc::new(windows);
     // Tracks whether the pointer is currently inside the switcher surface.
@@ -217,9 +221,11 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
     let cleanup_fn: Rc<dyn Fn()> = Rc::new({
         let no_key_src = Rc::clone(&no_key_src);
         let socket_src = Rc::clone(&socket_src);
+        let poll_src   = Rc::clone(&poll_src);
         move || {
             if let Some(src) = no_key_src.take() { src.remove(); }
             if let Some(src) = socket_src.take() { src.remove(); }
+            if let Some(src) = poll_src.take()   { src.remove(); }
             let _ = std::fs::remove_file(switcher_socket_path());
             let _ = std::fs::remove_file(switcher_pidfile());
         }
@@ -236,7 +242,10 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
         let cleanup      = Rc::clone(&cleanup_fn);
         let app          = app.clone();
         let mouse_inside = Rc::clone(&mouse_inside);
+        let closed       = Rc::clone(&closed);
         move || {
+            if closed.get() { return; }
+            closed.set(true);
             window.set_visible(false);
             cleanup();
             // Pointer left the window: close silently, no focus change.
@@ -371,6 +380,29 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
             glib::ControlFlow::Break
         });
         no_key_src.set(Some(src));
+    }
+
+    // ── Alt-state poll timer ──────────────────────────────────────────────
+    // Handles the case where keyboard focus left the overlay (e.g. the user
+    // clicked outside the surface), so key_released is never delivered here.
+    // Checks GDK modifier state every 200 ms and closes if Alt is no longer held.
+    {
+        let activate = Rc::clone(&activate_fn);
+        let window3  = window.clone();
+        let src = glib::timeout_add_local(Duration::from_millis(200), move || {
+            let kb = gtk4::prelude::WidgetExt::display(&window3)
+                .default_seat()
+                .and_then(|s| s.keyboard());
+            let gdk_alt = kb.map_or(false, |kb| {
+                kb.modifier_state().contains(gdk::ModifierType::ALT_MASK)
+            });
+            if !gdk_alt {
+                activate();
+                return glib::ControlFlow::Break;
+            }
+            glib::ControlFlow::Continue
+        });
+        poll_src.set(Some(src));
     }
 
     // ── Keyboard controller ───────────────────────────────────────────────
