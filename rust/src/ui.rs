@@ -38,7 +38,7 @@ use crate::windows::{flat_windows, get_windows, WindowEntry};
 ///    case / dash / dot-part variants and returns the app's declared icon.
 /// 2. GTK icon theme search — tries the same name variants directly.
 /// 3. Generic `application-x-executable` fallback.
-fn make_icon_widget(cls: &str) -> Image {
+fn make_icon_widget(cls: &str, title: &str) -> Image {
     let img = Image::new();
     img.set_pixel_size(64);
 
@@ -68,6 +68,25 @@ fn make_icon_widget(cls: &str) -> Image {
                 if let Some(icon) = gio::prelude::AppInfoExt::icon(&dapp) {
                     img.set_from_gicon(&icon);
                     return img;
+                }
+            }
+        }
+    }
+
+    // 2.5. Scan all .desktop files for a Name match against the window title.
+    //      Chrome --app=URL web apps have a WM_CLASS like
+    //      "chrome-discord.com__channels_@me-Default", but their title contains
+    //      the app name (e.g. "Discord"). Match Name= against the title as fallback.
+    let title_lower = title.to_lowercase();
+    if !title_lower.is_empty() {
+        for app_info in gio::AppInfo::all() {
+            if let Ok(dapp) = app_info.dynamic_cast::<gio_unix::DesktopAppInfo>() {
+                let name = dapp.name().to_lowercase();
+                if !name.is_empty() && title_lower.contains(&*name) {
+                    if let Some(icon) = gio::prelude::AppInfoExt::icon(&dapp) {
+                        img.set_from_gicon(&icon);
+                        return img;
+                    }
                 }
             }
         }
@@ -257,14 +276,14 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
             icons_row.set_halign(gtk4::Align::Center);
             col.append(&icons_row);
 
-            for (cls, _title, _addr, hidden, _fhid) in entries {
+            for (cls, title, _addr, hidden, _fhid) in entries {
                 let frame = GtkBox::new(Orientation::Vertical, 4);
                 frame.set_margin_top(4);
                 frame.set_margin_bottom(4);
                 frame.set_margin_start(4);
                 frame.set_margin_end(4);
                 frame.add_css_class("icon-frame");
-                frame.append(&make_icon_widget(cls));
+                frame.append(&make_icon_widget(cls, title));
                 if *hidden { frame.add_css_class("grouped-icon"); }
 
                 let idx = flat_idx;
