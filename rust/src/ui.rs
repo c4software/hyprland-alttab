@@ -380,14 +380,21 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
     }
 
     // ── Focus-loss recovery ───────────────────────────────────────────────
-    // If keyboard focus leaves the overlay (e.g. the user clicks outside),
-    // Wayland stops delivering key events to us. Re-grab focus immediately so
-    // key_released for Alt continues to be delivered correctly.
+    // When keyboard focus leaves the overlay Wayland stops delivering key
+    // events, so key_released for Alt would never fire.
+    // - Mouse still inside: re-grab focus so Alt release is caught normally.
+    // - Mouse outside: the user has left the switcher entirely; close now.
     {
-        let focus_ctrl = EventControllerFocus::new();
-        let window_ref = window.clone();
+        let focus_ctrl   = EventControllerFocus::new();
+        let window_ref   = window.clone();
+        let activate_ref = Rc::clone(&activate_fn);
+        let mi_ref       = Rc::clone(&mouse_inside);
         focus_ctrl.connect_leave(move |_| {
-            window_ref.grab_focus();
+            if mi_ref.get() {
+                window_ref.grab_focus();
+            } else {
+                activate_ref();
+            }
         });
         window.add_controller(focus_ctrl);
     }
