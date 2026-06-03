@@ -20,8 +20,7 @@ use std::time::Duration;
 use gtk4::prelude::*;
 use gtk4::{
     gdk, gio, glib, Application, ApplicationWindow, Box as GtkBox, CssProvider,
-    EventControllerFocus, EventControllerKey, EventControllerMotion, GestureClick, Image, Label,
-    Orientation, Separator,
+    EventControllerKey, EventControllerMotion, GestureClick, Image, Label, Orientation, Separator,
 };
 use gtk4_layer_shell::LayerShell;
 
@@ -145,8 +144,6 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
     let held_keys:    Rc<RefCell<HashSet<gdk::Key>>>   = Rc::new(RefCell::new(HashSet::new()));
     let no_key_src:   Rc<Cell<Option<glib::SourceId>>> = Rc::new(Cell::new(None));
     let socket_src:   Rc<Cell<Option<glib::SourceId>>> = Rc::new(Cell::new(None));
-    // Guard against activate_fn being called twice.
-    let closed:       Rc<Cell<bool>>                   = Rc::new(Cell::new(false));
     let frames:       Rc<RefCell<Vec<GtkBox>>>         = Rc::new(RefCell::new(Vec::new()));
     let windows_rc:   Rc<Vec<WindowEntry>>             = Rc::new(windows);
     // Tracks whether the pointer is currently inside the switcher surface.
@@ -162,10 +159,10 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
     window.init_layer_shell();
     window.set_namespace(Some("hypr-alttab"));
     window.set_layer(gtk4_layer_shell::Layer::Overlay);
-    // OnDemand: the surface is mapped without grabbing the keyboard seat.
-    // We call grab_focus() explicitly after present() so the window receives
-    // key events while leaving the previously focused app visually active.
-    window.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::OnDemand);
+    // Exclusive: the compositor grants this surface the keyboard seat for the
+    // entire lifetime of the overlay. No other surface can steal key events,
+    // so Alt release is always delivered regardless of mouse activity.
+    window.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::Exclusive);
     // No edge anchoring → the compositor centers the window.
     for edge in [gtk4_layer_shell::Edge::Top, gtk4_layer_shell::Edge::Bottom,
                  gtk4_layer_shell::Edge::Left, gtk4_layer_shell::Edge::Right] {
@@ -239,10 +236,7 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
         let cleanup      = Rc::clone(&cleanup_fn);
         let app          = app.clone();
         let mouse_inside = Rc::clone(&mouse_inside);
-        let closed       = Rc::clone(&closed);
         move || {
-            if closed.get() { return; }
-            closed.set(true);
             window.set_visible(false);
             cleanup();
             // Pointer left the window: close silently, no focus change.
@@ -377,26 +371,6 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
             glib::ControlFlow::Break
         });
         no_key_src.set(Some(src));
-    }
-
-    // ── Focus-loss recovery ───────────────────────────────────────────────
-    // When keyboard focus leaves the overlay Wayland stops delivering key
-    // events, so key_released for Alt would never fire.
-    // - Mouse still inside: re-grab focus so Alt release is caught normally.
-    // - Mouse outside: the user has left the switcher entirely; close now.
-    {
-        let focus_ctrl   = EventControllerFocus::new();
-        let window_ref   = window.clone();
-        let activate_ref = Rc::clone(&activate_fn);
-        let mi_ref       = Rc::clone(&mouse_inside);
-        focus_ctrl.connect_leave(move |_| {
-            if mi_ref.get() {
-                window_ref.grab_focus();
-            } else {
-                activate_ref();
-            }
-        });
-        window.add_controller(focus_ctrl);
     }
 
     // ── Keyboard controller ───────────────────────────────────────────────
