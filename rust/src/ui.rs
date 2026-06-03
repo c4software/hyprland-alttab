@@ -20,7 +20,8 @@ use std::time::Duration;
 use gtk4::prelude::*;
 use gtk4::{
     gdk, gio, glib, Application, ApplicationWindow, Box as GtkBox, CssProvider,
-    EventControllerKey, EventControllerMotion, GestureClick, Image, Label, Orientation, Separator,
+    EventControllerFocus, EventControllerKey, EventControllerMotion, GestureClick, Image, Label,
+    Orientation, Separator,
 };
 use gtk4_layer_shell::LayerShell;
 
@@ -144,9 +145,7 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
     let held_keys:    Rc<RefCell<HashSet<gdk::Key>>>   = Rc::new(RefCell::new(HashSet::new()));
     let no_key_src:   Rc<Cell<Option<glib::SourceId>>> = Rc::new(Cell::new(None));
     let socket_src:   Rc<Cell<Option<glib::SourceId>>> = Rc::new(Cell::new(None));
-    let poll_src:     Rc<Cell<Option<glib::SourceId>>> = Rc::new(Cell::new(None));
-    // Guard against activate_fn being called twice (e.g. key_released and poll
-    // timer firing in the same GLib iteration).
+    // Guard against activate_fn being called twice.
     let closed:       Rc<Cell<bool>>                   = Rc::new(Cell::new(false));
     let frames:       Rc<RefCell<Vec<GtkBox>>>         = Rc::new(RefCell::new(Vec::new()));
     let windows_rc:   Rc<Vec<WindowEntry>>             = Rc::new(windows);
@@ -221,11 +220,9 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
     let cleanup_fn: Rc<dyn Fn()> = Rc::new({
         let no_key_src = Rc::clone(&no_key_src);
         let socket_src = Rc::clone(&socket_src);
-        let poll_src   = Rc::clone(&poll_src);
         move || {
             if let Some(src) = no_key_src.take() { src.remove(); }
             if let Some(src) = socket_src.take() { src.remove(); }
-            if let Some(src) = poll_src.take()   { src.remove(); }
             let _ = std::fs::remove_file(switcher_socket_path());
             let _ = std::fs::remove_file(switcher_pidfile());
         }
@@ -382,31 +379,17 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
         no_key_src.set(Some(src));
     }
 
-    // ── Alt-state poll timer ──────────────────────────────────────────────
-    // Handles the case where keyboard focus left the overlay (e.g. the user
-    // clicked outside the surface), so key_released is never delivered here.
-    // Checks GDK modifier state every 200 ms and closes if Alt is no longer held.
+    // ── Focus-loss recovery ───────────────────────────────────────────────
+    // If keyboard focus leaves the overlay (e.g. the user clicks outside),
+    // Wayland stops delivering key events to us. Re-grab focus immediately so
+    // key_released for Alt continues to be delivered correctly.
     {
-        let activate = Rc::clone(&activate_fn);
-        let window3  = window.clone();
-        let src = glib::timeout_add_local(Duration::from_millis(200), move || {
-            let kb = gtk4::prelude::WidgetExt::display(&window3)
-                .default_seat()
-                .and_then(|s| s.keyboard());
-            // When the overlay loses keyboard focus, Wayland stops sending modifier
-        // updates to our surface so modifier_state() may return stale/empty
-        // state. Default to true (Alt held) when the device is unavailable so
-        // we never close while Alt is physically pressed.
-        let gdk_alt = kb.map_or(true, |kb| {
-                kb.modifier_state().contains(gdk::ModifierType::ALT_MASK)
-            });
-            if !gdk_alt {
-                activate();
-                return glib::ControlFlow::Break;
-            }
-            glib::ControlFlow::Continue
+        let focus_ctrl = EventControllerFocus::new();
+        let window_ref = window.clone();
+        focus_ctrl.connect_leave(move |_| {
+            window_ref.grab_focus();
         });
-        poll_src.set(Some(src));
+        window.add_controller(focus_ctrl);
     }
 
     // ── Keyboard controller ───────────────────────────────────────────────
