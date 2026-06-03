@@ -393,7 +393,11 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
             let kb = gtk4::prelude::WidgetExt::display(&window3)
                 .default_seat()
                 .and_then(|s| s.keyboard());
-            let gdk_alt = kb.map_or(false, |kb| {
+            // When the overlay loses keyboard focus, Wayland stops sending modifier
+        // updates to our surface so modifier_state() may return stale/empty
+        // state. Default to true (Alt held) when the device is unavailable so
+        // we never close while Alt is physically pressed.
+        let gdk_alt = kb.map_or(true, |kb| {
                 kb.modifier_state().contains(gdk::ModifierType::ALT_MASK)
             });
             if !gdk_alt {
