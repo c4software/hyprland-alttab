@@ -362,7 +362,10 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
             let kb = gtk4::prelude::WidgetExt::display(&window2)
                 .default_seat()
                 .and_then(|s| s.keyboard());
-            let gdk_alt = kb.map_or(false, |kb| {
+            // Default to true (Alt held) when the keyboard seat is not yet
+            // available so we don't close before the compositor finishes
+            // granting the Exclusive keyboard mode to this surface.
+            let gdk_alt = kb.map_or(true, |kb| {
                 kb.modifier_state().contains(gdk::ModifierType::ALT_MASK)
             });
             if held_keys.borrow().is_empty() && !gdk_alt {
@@ -444,10 +447,10 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
     }
 
     window.present();
-    // Explicitly request keyboard focus after the surface is mapped.
-    // With KeyboardMode::OnDemand the compositor does not grant the keyboard
-    // seat automatically; grab_focus() triggers the grant without visually
-    // stealing focus from the previously active window.
+    // Request keyboard focus after the surface is mapped.
+    // With KeyboardMode::Exclusive the compositor grants the surface
+    // permanent keyboard focus; grab_focus() ensures the grant is processed
+    // promptly so key events (including Alt release) are delivered reliably.
     window.grab_focus();
 }
 
