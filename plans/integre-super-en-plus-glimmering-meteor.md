@@ -77,11 +77,22 @@ if not self._held_keys and not alt_still_held and not super_still_held:
 
 ## Note sur la configuration Hyprland
 
-Le daemon reçoit des messages `"tab"` via socket. Il n'a pas besoin de modification. L'utilisateur doit ajouter un binding `Super+Tab` dans sa config Hyprland pour envoyer le même message que `Alt+Tab`, par exemple :
+Le daemon n'a pas besoin de modification. Il faut ajouter le binding dans la config Hyprland :
 
 ```
-bind = SUPER, Tab, exec, <commande qui envoie "tab" au daemon>
+bind = SUPER, Tab, exec, alttab
 ```
+
+### Capture des touches par-dessus les bindings Hyprland
+
+**`KeyboardMode::Exclusive` (ui.rs:165) gère déjà ça.** Quand le switcher s'ouvre, Hyprland cède l'intégralité du clavier à la surface layer-shell (layer Overlay). Tous les bindings Hyprland sont suspendus pendant la durée de vie du switcher — c'est pourquoi Alt+Tab ne re-spawne pas un nouveau switcher quand on appuie sur Tab pour naviguer.
+
+Même comportement avec Super+Tab :
+1. 1er appui `Super+Tab` → Hyprland binding → daemon → switcher s'ouvre avec exclusive mode
+2. Tab suivants (Super maintenu) → GTK exclusive capture tout → `key_pressed` handler navigue
+3. Super relâché → notre `key_released` handler détecte `SUPER_MASK` absent → active la fenêtre
+
+Aucun code supplémentaire n'est nécessaire pour l'interception des touches.
 
 ## Vérification
 
