@@ -365,10 +365,12 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
             // Default to true (Alt held) when the keyboard seat is not yet
             // available so we don't close before the compositor finishes
             // granting the Exclusive keyboard mode to this surface.
-            let gdk_alt = kb.map_or(true, |kb| {
-                kb.modifier_state().contains(gdk::ModifierType::ALT_MASK)
+            let modifier_held = kb.map_or(true, |kb| {
+                let mods = kb.modifier_state();
+                mods.contains(gdk::ModifierType::ALT_MASK)
+                    || mods.contains(gdk::ModifierType::SUPER_MASK)
             });
-            if held_keys.borrow().is_empty() && !gdk_alt {
+            if held_keys.borrow().is_empty() && !modifier_held {
                 activate();
             }
             glib::ControlFlow::Break
@@ -424,9 +426,11 @@ fn build_window(app: &Application, groups: Vec<(String, Vec<WindowEntry>)>) {
             held2.borrow_mut().remove(&keyval);
             // `state` still includes the modifier being released in this event,
             // so we must subtract it manually to detect "Alt fully released".
-            let alt_releasing = keyval == gdk::Key::Alt_L || keyval == gdk::Key::Alt_R;
-            let alt_held = state.contains(gdk::ModifierType::ALT_MASK) && !alt_releasing;
-            if held2.borrow().is_empty() && !alt_held {
+            let alt_releasing   = keyval == gdk::Key::Alt_L   || keyval == gdk::Key::Alt_R;
+            let super_releasing = keyval == gdk::Key::Super_L  || keyval == gdk::Key::Super_R;
+            let alt_held   = state.contains(gdk::ModifierType::ALT_MASK)   && !alt_releasing;
+            let super_held = state.contains(gdk::ModifierType::SUPER_MASK) && !super_releasing;
+            if held2.borrow().is_empty() && !alt_held && !super_held {
                 activate2();
             }
         });

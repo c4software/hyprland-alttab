@@ -418,10 +418,11 @@ class AltTabWindow(Gtk.ApplicationWindow):
         self._no_key_timer = None
         try:
             kb = self.get_display().get_default_seat().get_keyboard()
-            gdk_alt = bool(kb.get_modifier_state() & Gdk.ModifierType.ALT_MASK) if kb else False
+            mods = kb.get_modifier_state() if kb else 0
+            modifier_held = bool(mods & (Gdk.ModifierType.ALT_MASK | Gdk.ModifierType.SUPER_MASK))
         except Exception:
-            gdk_alt = False
-        if not self._held_keys and not gdk_alt:
+            modifier_held = False
+        if not self._held_keys and not modifier_held:
             self._activate()
         return False
 
@@ -570,9 +571,11 @@ class AltTabWindow(Gtk.ApplicationWindow):
 
     def on_key_release(self, ctrl, keyval, keycode, state):
         self._held_keys.discard(keyval)
-        alt_releasing = keyval in (Gdk.KEY_Alt_L, Gdk.KEY_Alt_R)
-        alt_still_held = bool(state & Gdk.ModifierType.ALT_MASK) and not alt_releasing
-        if not self._held_keys and not alt_still_held:
+        alt_releasing    = keyval in (Gdk.KEY_Alt_L,   Gdk.KEY_Alt_R)
+        super_releasing  = keyval in (Gdk.KEY_Super_L,  Gdk.KEY_Super_R)
+        alt_still_held   = bool(state & Gdk.ModifierType.ALT_MASK)   and not alt_releasing
+        super_still_held = bool(state & Gdk.ModifierType.SUPER_MASK) and not super_releasing
+        if not self._held_keys and not alt_still_held and not super_still_held:
             self._activate()
         return False
 
