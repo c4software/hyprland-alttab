@@ -26,7 +26,7 @@ use gtk4_layer_shell::LayerShell;
 
 use crate::daemon::{switcher_pidfile, switcher_socket_path};
 use crate::ipc::focus_window_after_exit;
-use crate::theme::parse_mako_colors;
+use crate::theme::load_theme_colors;
 use crate::windows::{flat_windows, get_windows, WindowEntry};
 
 // ─── Icon resolution ──────────────────────────────────────────────────────────
@@ -484,7 +484,7 @@ pub fn run_switcher() {
             settings.set_gtk_enable_animations(false);
         }
 
-        let theme  = parse_mako_colors();
+        let theme  = load_theme_colors();
         let bg     = &theme.background;
         let border = &theme.border;
         let text   = &theme.text;

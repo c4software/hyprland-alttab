@@ -45,50 +45,21 @@ pub fn hypr_request_json<T: DeserializeOwned>(command: &str) -> Result<T, Box<dy
     Ok(serde_json::from_str(&raw)?)
 }
 
-/// Send a `dispatch` IPC command (key bindings, window focus, workspace switch…).
+/// Send a `dispatch` IPC command. Hyprland ≥ 0.56 evaluates the payload as
+/// Lua, so `command` must be a dispatcher expression (`hl.dsp.…`).
 pub fn hypr_dispatch(command: &str) -> Result<String, std::io::Error> {
     hypr_request(&format!("dispatch {}", command))
 }
 
 // ─── Window focus ─────────────────────────────────────────────────────────────
 
-/// Focus a window by its Hyprland address.
-///
-/// Tries a plain `focuswindow address:` first, then a regex-anchored variant.
-/// If both fail (e.g. the window is on a hidden workspace), switches to its
-/// workspace first and retries.  Returns `true` if focus was confirmed by
-/// Hyprland.
+/// Focus a window by its Hyprland address, switching workspace if needed.
 pub fn focus_window_by_address(addr: &str) -> bool {
-    let candidates = [
-        format!("focuswindow address:{}", addr),
-        format!("focuswindow address:^{}$", addr),
-    ];
-
-    for cmd in &candidates {
-        if let Ok(reply) = hypr_dispatch(cmd) {
-            if reply.trim().to_lowercase() == "ok" {
-                return true;
-            }
-        }
+    let cmd = format!(r#"hl.dsp.focus({{ window = "address:{}" }})"#, addr);
+    match hypr_dispatch(&cmd) {
+        Ok(reply) => reply.trim().to_lowercase() == "ok",
+        Err(_) => false,
     }
-
-    // Fallback: switch to the window's workspace, then retry focuswindow.
-    if let Ok(clients) = hypr_request_json::<Vec<serde_json::Value>>("clients") {
-        if let Some(target) = clients.iter().find(|c| c["address"].as_str() == Some(addr)) {
-            if let Some(ws_id) = target["workspace"]["id"].as_i64() {
-                let _ = hypr_dispatch(&format!("workspace {}", ws_id));
-                for cmd in &candidates {
-                    if let Ok(reply) = hypr_dispatch(cmd) {
-                        if reply.trim().to_lowercase() == "ok" {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    false
 }
 
 /// Spawn `alttab --focus-address <addr>` as a detached child after the

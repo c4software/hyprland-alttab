@@ -227,9 +227,11 @@ pub fn run_daemon_loop() {
 mod tests {
     use super::*;
 
-    /// Write `contents` to a temp file, run the check, then clean up.
+    /// Write `contents` to a unique temp file, run the check, then clean up.
     fn with_pidfile(contents: &str, f: impl FnOnce(&str) -> bool) -> bool {
-        let path = format!("/tmp/alttab-test-{}.pid", std::process::id());
+        static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let seq  = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = format!("/tmp/alttab-test-{}-{}.pid", std::process::id(), seq);
         std::fs::write(&path, contents).unwrap();
         let result = f(&path);
         let _ = std::fs::remove_file(&path);
