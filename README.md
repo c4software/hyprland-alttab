@@ -8,9 +8,6 @@ a **Rust** GTK4 binary and a **Python** prototype — are kept in the repo.
 
 ![Alt+Tab switcher overlay, grouped by workspace](preview.png)
 
-> **Hyprland ≥ 0.56 required** (Lua config). The `dispatch` IPC now evaluates its payload as a
-> Lua expression (`hl.dsp.…`); the old text syntax (`focuswindow address:…`) is rejected.
-
 ```
 omarchy-plugin/   Omarchy shell plugin (QML) — recommended
 rust/             Legacy standalone GTK4 binary
