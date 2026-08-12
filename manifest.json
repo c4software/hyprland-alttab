@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "vbrosseau.alttab",
+  "name": "Alt+Tab",
+  "version": "1.0.0",
+  "author": "Valentin Brosseau",
+  "description": "Alt+Tab window switcher overlay for Hyprland",
+  "kinds": [
+    "service"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "omarchy-plugin/Service.qml"
+  }
+}

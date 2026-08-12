@@ -1,3 +1,7 @@
+# Plans
+plans/
+
+
 # Rust
 rust/target/
 rust/**/*.rs.bk
