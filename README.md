@@ -58,6 +58,15 @@ hyprctl dispatch 'hl.dsp.global("omarchy-alttab:next")'
 
 See [`omarchy-plugin/README.md`](omarchy-plugin/README.md) for details.
 
+### Uninstall
+
+```bash
+omarchy plugin remove vbrosseau.alttab --yes
+```
+
+Then remove the two binds and the layer rule from your Hyprland config and `hyprctl reload`.
+The plugin never modifies your configuration files itself.
+
 ## Why a shell plugin?
 
 The QML plugin runs as a `service` inside the long-lived `omarchy-shell` process:
@@ -116,3 +125,7 @@ Legacy Hyprland binding (exec form):
 ```lua
 o.bind("ALT + TAB", nil, "alttab", { repeating = true })
 ```
+
+## License
+
+[MIT](LICENSE)
