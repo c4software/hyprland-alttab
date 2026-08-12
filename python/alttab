@@ -48,36 +48,13 @@ def hypr_dispatch(command: str) -> str:
     return hypr_request(f"dispatch {command}")
 
 def focus_window_by_address(addr: str) -> bool:
-    """Focus a window robustly via IPC, including grouped/hidden members."""
-    candidates = [
-        f"focuswindow address:{addr}",
-        f"focuswindow address:^{addr}$",
-    ]
-
-    for cmd in candidates:
-        try:
-            if hypr_dispatch(cmd).strip().lower() == "ok":
-                return True
-        except Exception:
-            pass
-
-    # If the target is on another workspace, move there then retry.
+    """Focus a window (switches workspace if needed). Hyprland ≥ 0.56 expects
+    a Lua dispatcher expression as the dispatch payload."""
     try:
-        clients = hypr_request_json("clients")
-        target = next((c for c in clients if c.get("address") == addr), None)
-        if target:
-            ws_id = target["workspace"]["id"]
-            hypr_dispatch(f"workspace {ws_id}")
-            for cmd in candidates:
-                try:
-                    if hypr_dispatch(cmd).strip().lower() == "ok":
-                        return True
-                except Exception:
-                    pass
+        cmd = f'hl.dsp.focus({{ window = "address:{addr}" }})'
+        return hypr_dispatch(cmd).strip().lower() == "ok"
     except Exception:
-        pass
-
-    return False
+        return False
 
 def focus_window_after_exit(addr: str) -> None:
     """Run focus in a detached child once the switcher has started closing."""
