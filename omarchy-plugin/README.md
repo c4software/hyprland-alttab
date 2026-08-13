@@ -1,68 +1,68 @@
-# hyprland-alttab — plugin Omarchy shell
+# hyprland-alttab — Omarchy shell plugin
 
-Switcher Alt+Tab en QML, hébergé comme plugin `service` dans le process
-`omarchy-shell` (Quickshell) : un seul process persistant, pas de daemon,
-pas de socket, pas d'autostart à gérer.
+Alt+Tab switcher in QML, hosted as a `service` plugin inside the
+`omarchy-shell` (Quickshell) process: a single persistent process, no daemon,
+no socket, no autostart to manage.
 
-## Prérequis
+## Requirements
 
-- Omarchy avec le shell Quickshell (`omarchy-shell`)
-- Hyprland ≥ 0.56 (config Lua)
+- Omarchy with the Quickshell shell (`omarchy-shell`)
+- Hyprland ≥ 0.56 (Lua config)
 
 ## Installation
 
-> Le `manifest.json` vit à la racine du dépôt (exigence d'`omarchy plugin add`),
-> avec `entryPoints` pointant vers `omarchy-plugin/Service.qml`.
+> The `manifest.json` lives at the repo root (required by `omarchy plugin add`),
+> with `entryPoints` pointing to `omarchy-plugin/Service.qml`.
 
-1. Installer et activer :
+1. Install and enable:
 
 ```sh
 omarchy plugin add https://github.com/c4software/hyprland-alttab --enable
 ```
 
-En développement local, lier une copie de travail à la place :
+For local development, link a working copy instead:
 
 ```sh
 ln -sfn ~/projets/hyprland-alttab ~/.config/omarchy/plugins/vbrosseau.alttab
 omarchy plugin enable vbrosseau.alttab
 ```
 
-2. Bindings — copier le contenu de [`alttab-bindings.lua`](alttab-bindings.lua)
-   dans `~/.config/hypr/customisation.lua` (ou `bindings.lua`) :
+2. Bindings — include [`alttab-bindings.lua`](alttab-bindings.lua) from
+   `~/.config/hypr/customisation.lua` (or `bindings.lua`), so plugin updates
+   apply without touching your config:
 
-```sh
-cat ~/.config/omarchy/plugins/vbrosseau.alttab/omarchy-plugin/alttab-bindings.lua >> ~/.config/hypr/customisation.lua
+```lua
+dofile(os.getenv("HOME") .. "/.config/omarchy/plugins/vbrosseau.alttab/omarchy-plugin/alttab-bindings.lua")
 ```
 
-   Si le plugin démarre sans trouver le binding, il affiche une notification
-   (cliquer dessus ouvre ce README). La détection repose sur la description
-   `"Alt-Tab switcher"` des binds — la conserver si vous personnalisez les
-   touches.
+   If the plugin starts without finding the binding, it shows a notification
+   (clicking it opens this README). Detection relies on the `"Alt-Tab switcher"`
+   bind description — keep it if you customize the keys.
 
-3. `omarchy restart shell`, puis `hyprctl reload` et vérifier avec
-   `hyprctl configerrors`. Le shortcut doit apparaître dans
+3. `omarchy restart shell`, then `hyprctl reload` and check
+   `hyprctl configerrors`. The shortcut must show up in
    `hyprctl globalshortcuts`.
 
-Les modifications du code du plugin rechargent automatiquement
-(`omarchy-shell shell rescanPlugins` pour forcer).
+Plugin code changes reload automatically
+(`omarchy-shell shell rescanPlugins` to force).
 
-## Test manuel
+## Manual test
 
 ```sh
-hyprctl dispatch 'hl.dsp.global("omarchy-alttab:next")'   # ouvre l'overlay
+hyprctl dispatch 'hl.dsp.global("omarchy-alttab:next")'   # opens the overlay
 ```
 
-## Comportement
+## Behavior
 
-- ALT+Tab / SUPER+Tab : ouvre l'overlay, ré-appui avance la sélection.
-- Tab/Droite → suivant, Shift+Tab/Gauche → précédent, Entrée → activer,
-  Échap → fermer sans focus, relâcher ALT/SUPER → activer.
-- L'overlay reste ouvert tant qu'ALT ou SUPER est physiquement enfoncé
-  (vérifié via `hl.is_key_down` quand aucun événement clavier ne parvient
-  à l'overlay — cas du Tab relâché avant l'obtention du clavier).
-- Souris : survol sélectionne, clic active, pointeur sorti de l'overlay +
-  relâchement → fermeture sans changement de focus.
-- Fenêtres groupées par workspace (actif en premier), triées par récence
-  (focusHistoryID), fenêtres pinned exclues.
-- Couleurs : singleton `Color` du shell (`qs.Commons`) — suit le thème
-  Omarchy automatiquement.
+- ALT+Tab / SUPER+Tab: opens the overlay, pressing again advances the selection.
+- Tab/Right → next, Shift+Tab/Left → previous, Enter → activate,
+  Escape → close without focusing, releasing ALT/SUPER → activate.
+- The overlay stays open as long as ALT or SUPER is physically held
+  (checked via `hl.is_key_down` when no keyboard event reaches the
+  overlay — the case of Tab released before the keyboard is acquired).
+- Mouse: hover selects, click activates, pointer moved out of the overlay +
+  release → close without changing focus.
+- Windows grouped by workspace (active first), sorted by recency
+  (focusHistoryID), pinned windows excluded.
+- Colors: the shell's `Color` singleton (`qs.Commons`) — follows the Omarchy
+  theme automatically.

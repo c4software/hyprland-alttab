@@ -1,8 +1,8 @@
--- hyprland-alttab — bindings à injecter dans la config Hyprland Lua
--- (~/.config/hypr/customisation.lua ou bindings.lua), Hyprland ≥ 0.56.
+-- hyprland-alttab — bindings to inject into the Hyprland Lua config
+-- (~/.config/hypr/customisation.lua or bindings.lua), Hyprland ≥ 0.56.
 
--- La description "Alt-Tab switcher" sert de sentinelle : le plugin vérifie sa
--- présence dans `hyprctl binds` pour détecter que le binding est installé.
+-- The "Alt-Tab switcher" description acts as a sentinel: the plugin checks
+-- for it in `hyprctl binds` to detect that the binding is installed.
 hl.unbind("ALT + TAB")
 o.bind("ALT + TAB", "Alt-Tab switcher", hl.dsp.global("omarchy-alttab:next"), { repeating = true })
 
