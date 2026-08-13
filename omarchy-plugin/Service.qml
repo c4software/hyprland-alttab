@@ -91,6 +91,37 @@ Item {
         }
     }
 
+    // The Lua binding snippet tags its binds with the "Alt-Tab switcher"
+    // description; its absence means the user enabled the plugin without
+    // installing alttab-bindings.lua.
+    Timer {
+        interval: 3000
+        running: true
+        onTriggered: bindsCheck.running = true
+    }
+
+    Process {
+        id: bindsCheck
+        command: ["hyprctl", "-j", "binds"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let binds = [];
+                try { binds = JSON.parse(text); } catch (e) { return; }
+                if (!binds.some(b => b.description === "Alt-Tab switcher"))
+                    missingBindNotify.running = true;
+            }
+        }
+    }
+
+    Process {
+        id: missingBindNotify
+        command: ["sh", "-c",
+            'action=$(notify-send -u critical -A default="Open README" "hyprland-alttab" ' +
+            '"No keybinding found. Add alttab-bindings.lua to your Hyprland config."); ' +
+            '[ "$action" = "default" ] && xdg-open ' +
+            '"https://github.com/c4software/hyprland-alttab/blob/main/omarchy-plugin/README.md"']
+    }
+
     Process {
         id: clientsProc
         command: ["hyprctl", "-j", "clients"]

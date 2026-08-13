@@ -34,6 +34,11 @@ omarchy plugin enable vbrosseau.alttab
 cat ~/.config/omarchy/plugins/vbrosseau.alttab/omarchy-plugin/alttab-bindings.lua >> ~/.config/hypr/customisation.lua
 ```
 
+   Si le plugin démarre sans trouver le binding, il affiche une notification
+   (cliquer dessus ouvre ce README). La détection repose sur la description
+   `"Alt-Tab switcher"` des binds — la conserver si vous personnalisez les
+   touches.
+
 3. `omarchy restart shell`, puis `hyprctl reload` et vérifier avec
    `hyprctl configerrors`. Le shortcut doit apparaître dans
    `hyprctl globalshortcuts`.
