@@ -83,7 +83,8 @@ The QML plugin runs as a `service` inside the long-lived `omarchy-shell` process
 
 ## Legacy implementations
 
-Both provide the same daemon-based CLI:
+Both are standalone programs that predate the plugin, driven by a daemon and their own
+Unix sockets. They are not installed, invoked or required by the plugin.
 
 ```
 alttab                      Starts the daemon if needed, sends "tab" (bind this)
@@ -93,37 +94,7 @@ alttab --kill               Stops the daemon
 alttab --focus-address ADDR Focus a window by Hyprland address
 ```
 
-Focus uses the Lua dispatcher (`hl.dsp.focus({ window = "address:…" })`), which also switches
-workspaces. The Rust version reads theme colors from
-`~/.local/state/omarchy/current/theme/colors.toml` (`background` / `accent` / `foreground`).
-
-### Rust build
-
-```bash
-# Arch Linux
-sudo pacman -S gtk4 gtk4-layer-shell rust
-cd rust && cargo build --release
-cp target/release/alttab ~/.local/bin/alttab
-```
-
-```
-rust/src/
-├── main.rs       — CLI argument dispatch
-├── ipc.rs        — Hyprland IPC (Lua dispatchers) via Unix socket
-├── daemon.rs     — daemon mode (socket server, spawn-guard)
-├── theme.rs      — reads colors from colors.toml
-├── windows.rs    — fetches and sorts Hyprland windows
-└── ui.rs         — GTK4 layer-shell overlay
-```
-
-Runtime files under `$XDG_RUNTIME_DIR`: `hypr-alttab.sock`, `hypr-alttab-switcher.sock`,
-`hypr-alttab-daemon.pid`, `hypr-alttab-switcher.pid`.
-
-Legacy Hyprland binding (exec form):
-
-```lua
-o.bind("ALT + TAB", nil, "alttab", { repeating = true })
-```
+Build instructions, architecture and runtime details: [`rust/README.md`](rust/README.md).
 
 ## License
 
