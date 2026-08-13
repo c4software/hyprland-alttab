@@ -27,14 +27,11 @@ ln -sfn ~/projets/hyprland-alttab ~/.config/omarchy/plugins/vbrosseau.alttab
 omarchy plugin enable vbrosseau.alttab
 ```
 
-2. Bindings — dans `~/.config/hypr/customisation.lua` (ou `bindings.lua`) :
+2. Bindings — copier le contenu de [`alttab-bindings.lua`](alttab-bindings.lua)
+   dans `~/.config/hypr/customisation.lua` (ou `bindings.lua`) :
 
-```lua
-hl.unbind("ALT + TAB")
-o.bind("ALT + TAB", nil, hl.dsp.global("omarchy-alttab:next"), { repeating = true })
-hl.unbind("SUPER + TAB")
-o.bind("SUPER + TAB", nil, hl.dsp.global("omarchy-alttab:next"), { repeating = true })
-hl.layer_rule({ match = { namespace = "omarchy-alttab" }, no_anim = true })
+```sh
+cat ~/.config/omarchy/plugins/vbrosseau.alttab/omarchy-plugin/alttab-bindings.lua >> ~/.config/hypr/customisation.lua
 ```
 
 3. `omarchy restart shell`, puis `hyprctl reload` et vérifier avec
