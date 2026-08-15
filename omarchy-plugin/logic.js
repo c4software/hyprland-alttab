@@ -25,7 +25,8 @@ function parseTheme(text) {
 // Group clients by workspace: active workspace first then ascending id;
 // within a group the focused window (fhid == 0) first, then ascending fhid.
 // Pinned windows excluded, empty titles replaced with "-".
-// Returns [{ name, entries: [{ cls, title, addr, hidden, fhid, flatIdx }] }].
+// groupIdx: 1-based position in the client's Hyprland group, 0 if ungrouped.
+// Returns [{ name, entries: [{ cls, title, addr, hidden, fhid, flatIdx, groupIdx }] }].
 function groupClients(clients, activeWsId) {
     const wsOrder = [];
     const wsMap = {};
@@ -64,6 +65,7 @@ function groupClients(clients, activeWsId) {
                 hidden: !!c.hidden,
                 fhid: c.focusHistoryID,
                 flatIdx: flatIdx++,
+                groupIdx: c.grouped ? c.grouped.indexOf(c.address) + 1 : 0,
             })),
         });
     }

@@ -37,10 +37,15 @@ Item {
     // doFocus=false: Escape / pointer-left semantics — close without focusing.
     function close(doFocus) {
         if (!open) return;
-        const addr = (doFocus && flat.length) ? flat[selected].addr : "";
+        const entry = (doFocus && flat.length) ? flat[selected] : null;
         open = false;
-        if (addr)
-            Hyprland.dispatch('hl.dsp.focus({ window = "address:' + addr + '" })');
+        if (!entry) return;
+        // hl.dsp.focus silently ignores hidden group tabs (Hyprland ≥0.56);
+        // switch the group's active tab first. Two dispatches: the payload is
+        // evaluated as a single Lua expression.
+        if (entry.groupIdx)
+            Hyprland.dispatch('hl.dsp.group.active({ window = "address:' + entry.addr + '", index = ' + entry.groupIdx + ' })');
+        Hyprland.dispatch('hl.dsp.focus({ window = "address:' + entry.addr + '" })');
     }
 
     // Icon cascade: desktop entry by id variants → StartupWMClass scan →
