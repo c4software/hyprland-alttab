@@ -40,12 +40,28 @@ Item {
         const entry = (doFocus && flat.length) ? flat[selected] : null;
         open = false;
         if (!entry) return;
-        // hl.dsp.focus silently ignores hidden group tabs (Hyprland ≥0.56);
-        // switch the group's active tab first. Two dispatches: the payload is
-        // evaluated as a single Lua expression.
-        if (entry.groupIdx)
-            Hyprland.dispatch('hl.dsp.group.active({ window = "address:' + entry.addr + '", index = ' + entry.groupIdx + ' })');
-        Hyprland.dispatch('hl.dsp.focus({ window = "address:' + entry.addr + '" })');
+        pendingAddr = entry.addr;
+        pendingGroupIdx = entry.groupIdx;
+        focusTimer.start();
+    }
+
+    property string pendingAddr: ""
+    property int pendingGroupIdx: 0
+
+    // Dispatch after the overlay surface is gone: tearing down the exclusive
+    // keyboard grab makes Hyprland restore focus to the previously active
+    // window, which re-raises its group tab and undoes a same-group switch.
+    // hl.dsp.focus silently ignores hidden group tabs (Hyprland ≥0.56), so
+    // switch the group's active tab first. Two dispatches: the payload is
+    // evaluated as a single Lua expression.
+    Timer {
+        id: focusTimer
+        interval: 100
+        onTriggered: {
+            if (root.pendingGroupIdx)
+                Hyprland.dispatch('hl.dsp.group.active({ window = "address:' + root.pendingAddr + '", index = ' + root.pendingGroupIdx + ' })');
+            Hyprland.dispatch('hl.dsp.focus({ window = "address:' + root.pendingAddr + '" })');
+        }
     }
 
     // Icon cascade: desktop entry by id variants → StartupWMClass scan →
