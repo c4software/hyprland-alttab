@@ -172,6 +172,11 @@ Item {
             id: panel
 
             property bool mouseInside: true
+            // Hover only selects once the pointer really moved after the
+            // overlay opened — the surface maps under a stationary cursor,
+            // which must not steal the selection (GTK-version semantics).
+            property bool hoverArmed: false
+            property point initialPos: Qt.point(-1, -1)
 
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
@@ -229,6 +234,21 @@ Item {
                 implicitHeight: column.implicitHeight + 40
 
                 focus: true
+
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    acceptedButtons: Qt.NoButton
+                    onPositionChanged: (mouse) => {
+                        if (panel.hoverArmed) return;
+                        if (panel.initialPos.x < 0) {
+                            panel.initialPos = Qt.point(mouse.x, mouse.y);
+                            return;
+                        }
+                        if (Math.abs(mouse.x - panel.initialPos.x) + Math.abs(mouse.y - panel.initialPos.y) > 3)
+                            panel.hoverArmed = true;
+                    }
+                }
 
                 Keys.onPressed: (event) => {
                     root.sawKeyEvent = true;
@@ -342,9 +362,11 @@ Item {
                                                     source: root.iconPathFor(frame.modelData.cls, frame.modelData.title)
                                                 }
 
+                                                property bool hoverSelect: frameHover.hovered && panel.hoverArmed
+                                                onHoverSelectChanged: if (hoverSelect) root.selected = frame.modelData.flatIdx
+
                                                 HoverHandler {
                                                     id: frameHover
-                                                    onHoveredChanged: if (hovered) root.selected = frame.modelData.flatIdx
                                                 }
 
                                                 TapHandler {
