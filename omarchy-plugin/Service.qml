@@ -30,7 +30,10 @@ Item {
     function next() { if (flat.length) selected = (selected + 1) % flat.length }
     function prev() { if (flat.length) selected = (selected + flat.length - 1) % flat.length }
 
-    function requestOpen() {
+    property bool pendingReverseOpen: false
+
+    function requestOpen(reverse) {
+        root.pendingReverseOpen = !!reverse;
         clientsProc.running = true;
     }
 
@@ -112,6 +115,22 @@ Item {
         }
     }
 
+    // Mirrors "next" for the reverse direction (e.g. ALT+SHIFT+TAB), so a cold
+    // press opens the overlay already stepped one back instead of forward.
+    GlobalShortcut {
+        appid: "omarchy-alttab"
+        name: "prev"
+        onPressed: {
+            if (root.open) {
+                root.sawKeyEvent = true;
+                root.modsHeld = true;
+                root.prev();
+            } else {
+                root.requestOpen(true);
+            }
+        }
+    }
+
     // The Lua binding snippet tags its binds with the "Alt-Tab switcher"
     // description; its absence means the user enabled the plugin without
     // installing alttab-bindings.lua.
@@ -157,6 +176,8 @@ Item {
                 root.groups = groups;
                 root.flat = flat;
                 root.selected = Logic.initialSelection(flat);
+                if (root.pendingReverseOpen) root.prev();
+                root.pendingReverseOpen = false;
                 root.heldKeys = {};
                 root.sawKeyEvent = false;
                 root.modsHeld = false;

@@ -45,6 +45,10 @@ hl.unbind("ALT + TAB")
 o.bind("ALT + TAB", nil, hl.dsp.global("omarchy-alttab:next"), { repeating = true })
 hl.unbind("SUPER + TAB")
 o.bind("SUPER + TAB", nil, hl.dsp.global("omarchy-alttab:next"), { repeating = true })
+hl.unbind("ALT + SHIFT + TAB")
+o.bind("ALT + SHIFT + TAB", nil, hl.dsp.global("omarchy-alttab:prev"), { repeating = true })
+hl.unbind("SUPER + SHIFT + TAB")
+o.bind("SUPER + SHIFT + TAB", nil, hl.dsp.global("omarchy-alttab:prev"), { repeating = true })
 hl.layer_rule({ match = { namespace = "omarchy-alttab" }, no_anim = true })
 ```
 
