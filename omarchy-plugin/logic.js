@@ -22,6 +22,18 @@ function parseTheme(text) {
     return theme;
 }
 
+// Workspace names are free-form. Plugins that give every monitor its own set
+// (per-monitor-workspaces, for one) name them "<monitor description>:<slot>",
+// e.g. "LG Electronics LG ULTRAFINE 508NTHMJJ505:2" — a group header several
+// times wider than the windows under it. Keep the trailing slot for those;
+// plain names and "special:" workspaces are returned unchanged.
+function shortWorkspaceName(name) {
+    const text = String(name === null || name === undefined ? "" : name);
+    if (text.indexOf("special:") === 0) return text;
+    const match = text.match(/^.+:(\d+)$/);
+    return match ? match[1] : text;
+}
+
 // Group clients by workspace: active workspace first then ascending id;
 // within a group the focused window (fhid == 0) first, then ascending fhid.
 // Pinned windows excluded, empty titles replaced with "-".
