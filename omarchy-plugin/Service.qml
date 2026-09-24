@@ -34,6 +34,7 @@ Item {
 
     function requestOpen(reverse) {
         root.pendingReverseOpen = !!reverse;
+        if (root.shell && root.shell.appLibrary) root.shell.appLibrary.refreshIcons();
         clientsProc.running = true;
     }
 
@@ -90,10 +91,16 @@ Item {
     }
 
     // Returns "" when nothing resolves (e.g. the configured icon theme is missing).
+    // Qt's icon cache never re-scans, so apps installed after the shell started
+    // fall back to the shell's appLibrary, which keeps a live on-disk index.
     function resolveIcon(name) {
         if (!name) return "";
         if (name.startsWith("/")) return "file://" + name;
-        return Quickshell.iconPath(name, true);
+        const p = Quickshell.iconPath(name, true);
+        if (p) return p;
+        const lib = root.shell ? root.shell.appLibrary : null;
+        const found = lib ? lib.iconSource(name) : "";
+        return found && found !== Quickshell.iconPath("application-x-executable", true) ? found : "";
     }
 
     // Icon cascade: desktop entry by id variants → StartupWMClass scan →
