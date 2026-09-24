@@ -16,6 +16,20 @@ Item {
     property var flat: []
     property int selected: 0
 
+    // Window previews: tile height for the current opening (shrunk so the row
+    // fits the focused monitor) and Hyprland address -> Wayland toplevel handle
+    // for the screencopy source.
+    readonly property int maxThumbHeight: 150
+    property int thumbHeight: maxThumbHeight
+    property var toplevelByAddr: ({})
+
+    function refreshToplevels() {
+        const map = {};
+        for (const t of Hyprland.toplevels.values)
+            if (t && t.wayland) map[String(t.address).replace(/^0x/, "")] = t.wayland;
+        toplevelByAddr = map;
+    }
+
     // Keyboard state observed by the overlay. The initial ALT press predates
     // the surface, so modifier state is only known from received events.
     property var heldKeys: ({})
@@ -31,6 +45,7 @@ Item {
     function prev() { if (flat.length) selected = (selected + flat.length - 1) % flat.length }
 
     function requestOpen() {
+        Hyprland.refreshToplevels();
         if (root.shell && root.shell.appLibrary) root.shell.appLibrary.refreshIcons();
         clientsProc.running = true;
     }
@@ -165,6 +180,10 @@ Item {
                 const groups = Logic.groupClients(clients, activeWs);
                 const flat = Logic.flatten(groups);
                 if (!flat.length) return;
+                const mon = Hyprland.focusedMonitor;
+                const availW = mon ? mon.width / (mon.scale || 1) * 0.92 : 1800;
+                root.thumbHeight = Logic.fitThumbHeight(flat, groups.length, root.maxThumbHeight, availW);
+                root.refreshToplevels();
                 root.groups = groups;
                 root.flat = flat;
                 root.selected = Logic.initialSelection(flat);
@@ -350,9 +369,10 @@ Item {
                                                 id: frame
                                                 required property var modelData
                                                 property bool isSelected: root.selected === modelData.flatIdx
+                                                readonly property var source: root.toplevelByAddr[modelData.addr.replace(/^0x/, "")] || null
 
-                                                width: icon.width + 24
-                                                height: icon.height + 20
+                                                width: thumb.width + 24
+                                                height: thumb.height + caption.height + 26
                                                 radius: 12
                                                 color: isSelected
                                                     ? Qt.alpha(Color.accent, frameHover.hovered ? 0.4 : 0.25)
@@ -361,14 +381,56 @@ Item {
                                                 border.width: modelData.hidden ? 1 : 0
                                                 border.color: Qt.alpha(Color.accent, 0.45)
 
-                                                Image {
-                                                    id: icon
-                                                    anchors.centerIn: parent
-                                                    width: 64
-                                                    height: 64
-                                                    sourceSize.width: 64
-                                                    sourceSize.height: 64
-                                                    source: root.iconPathFor(frame.modelData.cls, frame.modelData.title)
+                                                // Still frame of the window; the app icon stands in
+                                                // until it arrives or when capture is unavailable.
+                                                Rectangle {
+                                                    id: thumb
+                                                    x: 12
+                                                    y: 12
+                                                    width: Logic.tileWidth(frame.modelData, root.thumbHeight)
+                                                    height: root.thumbHeight
+                                                    radius: 6
+                                                    color: Qt.alpha(Color.foreground, 0.06)
+                                                    clip: true
+
+                                                    ScreencopyView {
+                                                        id: capture
+                                                        anchors.fill: parent
+                                                        captureSource: root.open ? frame.source : null
+                                                        live: false
+                                                        paintCursor: false
+                                                        constraintSize: Qt.size(Math.max(1, width), Math.max(1, height))
+                                                        visible: hasContent
+                                                    }
+
+                                                    Image {
+                                                        id: icon
+                                                        readonly property int size: capture.hasContent
+                                                            ? Math.round(Math.min(32, root.thumbHeight * 0.3))
+                                                            : Math.round(Math.min(64, root.thumbHeight * 0.55))
+                                                        // Centered placeholder, then a corner badge over the preview.
+                                                        x: capture.hasContent ? parent.width - size - 6 : (parent.width - size) / 2
+                                                        y: capture.hasContent ? parent.height - size - 6 : (parent.height - size) / 2
+                                                        width: size
+                                                        height: size
+                                                        sourceSize.width: 64
+                                                        sourceSize.height: 64
+                                                        source: root.iconPathFor(frame.modelData.cls, frame.modelData.title)
+                                                    }
+                                                }
+
+                                                Text {
+                                                    id: caption
+                                                    anchors.top: thumb.bottom
+                                                    anchors.topMargin: 6
+                                                    anchors.horizontalCenter: thumb.horizontalCenter
+                                                    width: thumb.width
+                                                    text: frame.modelData.title
+                                                    color: frame.isSelected ? Color.foreground : Qt.alpha(Color.foreground, 0.65)
+                                                    font.pixelSize: 11
+                                                    elide: Text.ElideRight
+                                                    horizontalAlignment: Text.AlignHCenter
+                                                    maximumLineCount: 1
                                                 }
 
                                                 property bool hoverSelect: frameHover.hovered && panel.hoverArmed
