@@ -34,7 +34,7 @@ Item {
         clientsProc.running = true;
     }
 
-    // doFocus=false: Escape / pointer-left semantics — close without focusing.
+    // doFocus=false: Escape semantics — close without focusing.
     function close(doFocus) {
         if (!open) return;
         const entry = (doFocus && flat.length) ? flat[selected] : null;
@@ -171,7 +171,6 @@ Item {
         PanelWindow {
             id: panel
 
-            property bool mouseInside: true
             // Hover only selects once the pointer really moved after the
             // overlay opened — the surface maps under a stationary cursor,
             // which must not steal the selection (GTK-version semantics).
@@ -186,8 +185,11 @@ Item {
             implicitWidth: content.implicitWidth
             implicitHeight: content.implicitHeight
 
+            // Always focus the selection; only Escape cancels. Cancelling
+            // when the pointer had left the overlay meant any cursor movement
+            // (or a focus warp) silently dropped the chosen window.
             function activate() {
-                root.close(mouseInside);
+                root.close(true);
             }
 
             // Fast-tap race: modifier released before the exclusive keyboard
@@ -284,10 +286,6 @@ Item {
                     root.modsHeld = !!(altHeld || superHeld);
                     if (root.heldEmpty() && !root.modsHeld)
                         panel.activate();
-                }
-
-                HoverHandler {
-                    onHoveredChanged: panel.mouseInside = hovered
                 }
 
                 Column {
