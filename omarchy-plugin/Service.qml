@@ -31,6 +31,7 @@ Item {
     function prev() { if (flat.length) selected = (selected + flat.length - 1) % flat.length }
 
     function requestOpen() {
+        if (root.shell && root.shell.appLibrary) root.shell.appLibrary.refreshIcons();
         clientsProc.running = true;
     }
 
@@ -66,24 +67,34 @@ Item {
 
     // Icon cascade: desktop entry by id variants → StartupWMClass scan →
     // app Name substring-of-title scan (Chrome PWAs) → icon theme variants → generic.
+    // Qt's icon cache never re-scans, so apps installed after the shell
+    // started (e.g. Brave) miss the themed lookup and fall back to the
+    // generic icon. The shell's appLibrary keeps a live on-disk index.
+    function themedIcon(name) {
+        const p = Quickshell.iconPath(name, true);
+        if (p) return p;
+        const lib = root.shell ? root.shell.appLibrary : null;
+        return lib ? lib.iconSource(name) : Quickshell.iconPath(name, "application-x-executable");
+    }
+
     function iconPathFor(cls, title) {
         const clsLower = cls.toLowerCase();
         for (const v of [cls, clsLower, cls.replace(/-/g, ""), cls.split(".")[0]]) {
             if (!v) continue;
             const e = DesktopEntries.byId(v);
-            if (e && e.icon) return Quickshell.iconPath(e.icon, "application-x-executable");
+            if (e && e.icon) return root.themedIcon(e.icon);
         }
         const all = DesktopEntries.applications.values;
         for (const e of all) {
             if (e.startupClass && e.startupClass.toLowerCase() === clsLower && e.icon)
-                return Quickshell.iconPath(e.icon, "application-x-executable");
+                return root.themedIcon(e.icon);
         }
         const titleLower = (title || "").toLowerCase();
         if (titleLower) {
             for (const e of all) {
                 const n = (e.name || "").toLowerCase();
                 if (n && titleLower.includes(n) && e.icon)
-                    return Quickshell.iconPath(e.icon, "application-x-executable");
+                    return root.themedIcon(e.icon);
             }
         }
         for (const v of [cls, clsLower, cls.split("-")[0], cls.split(".").pop()]) {
