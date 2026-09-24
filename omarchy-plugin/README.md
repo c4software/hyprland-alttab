@@ -62,6 +62,9 @@ hyprctl dispatch 'hl.dsp.global("omarchy-alttab:next")'   # opens the overlay
   overlay — the case of Tab released before the keyboard is acquired).
 - Mouse: hover selects (once the pointer moves), click activates. Releasing
   ALT/SUPER always focuses the selection, wherever the pointer is.
+- Each window shows a still preview (one screencopy frame per opening, never
+  streamed), sized to its aspect ratio and shrunk to fit the monitor; the app
+  icon is shown instead when capture is unavailable.
 - Windows grouped by workspace (active first), sorted by recency
   (focusHistoryID), pinned windows excluded.
 - Colors: the shell's `Color` singleton (`qs.Commons`) — follows the Omarchy

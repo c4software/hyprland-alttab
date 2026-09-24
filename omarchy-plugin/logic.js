@@ -38,7 +38,8 @@ function shortWorkspaceName(name) {
 // within a group the focused window (fhid == 0) first, then ascending fhid.
 // Pinned windows excluded, empty titles replaced with "-".
 // groupIdx: 1-based position in the client's Hyprland group, 0 if ungrouped.
-// Returns [{ name, entries: [{ cls, title, addr, hidden, fhid, flatIdx, groupIdx }] }].
+// w/h: window size, used for the preview aspect ratio.
+// Returns [{ name, entries: [{ cls, title, addr, hidden, fhid, flatIdx, groupIdx, w, h }] }].
 function groupClients(clients, activeWsId) {
     const wsOrder = [];
     const wsMap = {};
@@ -78,6 +79,8 @@ function groupClients(clients, activeWsId) {
                 fhid: c.focusHistoryID,
                 flatIdx: flatIdx++,
                 groupIdx: c.grouped ? c.grouped.indexOf(c.address) + 1 : 0,
+                w: c.size ? c.size[0] : 0,
+                h: c.size ? c.size[1] : 0,
             })),
         });
     }
@@ -102,4 +105,20 @@ function initialSelection(flat) {
         }
     }
     return best >= 0 ? best : 0;
+}
+
+// Preview width for a window at the given thumbnail height, clamped so very
+// wide or very tall windows keep a readable tile.
+function tileWidth(entry, thumbH) {
+    const aspect = entry.w > 0 && entry.h > 0 ? entry.w / entry.h : 16 / 10;
+    return Math.round(Math.max(0.6, Math.min(2.4, aspect)) * thumbH);
+}
+
+// Largest thumbnail height (capped at maxH) whose row still fits availW.
+function fitThumbHeight(flat, groupCount, maxH, availW) {
+    const fixed = flat.length * (24 + 8) + groupCount * 25 + 40;
+    let unit = 0;
+    for (const e of flat) unit += tileWidth(e, 1000) / 1000;
+    if (unit <= 0) return maxH;
+    return Math.max(56, Math.min(maxH, Math.floor((availW - fixed) / unit)));
 }
