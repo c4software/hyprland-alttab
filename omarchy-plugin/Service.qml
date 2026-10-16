@@ -53,7 +53,7 @@ Item {
     // window, which re-raises its group tab and undoes a same-group switch.
     // hl.dsp.focus silently ignores hidden group tabs (Hyprland ≥0.56), so
     // switch the group's active tab first. Two dispatches: the payload is
-    // evaluated as a single Lua expression.
+    // evaluated as a single Lua expression. Focus does not raise floating windows.
     Timer {
         id: focusTimer
         interval: 100
@@ -61,6 +61,7 @@ Item {
             if (root.pendingGroupIdx)
                 Hyprland.dispatch('hl.dsp.group.active({ window = "address:' + root.pendingAddr + '", index = ' + root.pendingGroupIdx + ' })');
             Hyprland.dispatch('hl.dsp.focus({ window = "address:' + root.pendingAddr + '" })');
+            Hyprland.dispatch('hl.dsp.window.bring_to_top()');
         }
     }
 
