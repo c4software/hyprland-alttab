@@ -65,8 +65,30 @@ Item {
         }
     }
 
+    // Chromium names --app windows "chrome-<host>_<path, / → _>-<profile>",
+    // e.g. https://outlook.office.com/mail/ → chrome-outlook.office.com__mail_-Default.
+    function chromeAppKey(url) {
+        const m = /^https?:\/\/([^\/?#]+)([^?#]*)/.exec(url);
+        return m ? (m[1] + "_" + (m[2] || "/").replace(/\//g, "_")).toLowerCase() : "";
+    }
+
+    function isWordChar(c) {
+        return !!c && (c.toLowerCase() !== c.toUpperCase() || (c >= "0" && c <= "9"));
+    }
+
+    // True if needle occurs in hay as a whole word: a plain substring test
+    // matched the app "X" inside "Inbox".
+    function containsWord(hay, needle) {
+        for (let i = hay.indexOf(needle); i >= 0; i = hay.indexOf(needle, i + 1)) {
+            if (!isWordChar(hay[i - 1]) && !isWordChar(hay[i + needle.length]))
+                return true;
+        }
+        return false;
+    }
+
     // Icon cascade: desktop entry by id variants → StartupWMClass scan →
-    // app Name substring-of-title scan (Chrome PWAs) → icon theme variants → generic.
+    // Chrome web app URL from Exec → app Name as whole word in title (longest
+    // wins) → icon theme variants → generic.
     function iconPathFor(cls, title) {
         const clsLower = cls.toLowerCase();
         for (const v of [cls, clsLower, cls.replace(/-/g, ""), cls.split(".")[0]]) {
@@ -79,13 +101,26 @@ Item {
             if (e.startupClass && e.startupClass.toLowerCase() === clsLower && e.icon)
                 return Quickshell.iconPath(e.icon, "application-x-executable");
         }
-        const titleLower = (title || "").toLowerCase();
-        if (titleLower) {
+        // Entries with a StartupWMClass were matched exactly above; skipping them
+        // keeps a profile-specific launcher from claiming another profile's window.
+        const chrome = /^chrome-(.+)-[^-]+$/.exec(clsLower);
+        if (chrome) {
             for (const e of all) {
-                const n = (e.name || "").toLowerCase();
-                if (n && titleLower.includes(n) && e.icon)
+                if (e.startupClass || !e.icon) continue;
+                const url = /https?:\/\/[^\s"']+/.exec(e.execString || "");
+                if (url && chromeAppKey(url[0]) === chrome[1])
                     return Quickshell.iconPath(e.icon, "application-x-executable");
             }
+        }
+        const titleLower = (title || "").toLowerCase();
+        if (titleLower) {
+            let best = null;
+            for (const e of all) {
+                const n = (e.name || "").toLowerCase();
+                if (n && e.icon && (!best || n.length > best.name.length) && containsWord(titleLower, n))
+                    best = e;
+            }
+            if (best) return Quickshell.iconPath(best.icon, "application-x-executable");
         }
         for (const v of [cls, clsLower, cls.split("-")[0], cls.split(".").pop()]) {
             if (!v) continue;
