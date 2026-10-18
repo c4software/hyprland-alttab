@@ -67,32 +67,43 @@ Item {
 
     // Icon cascade: desktop entry by id variants → StartupWMClass scan →
     // app Name substring-of-title scan (Chrome PWAs) → icon theme variants → generic.
+    // Returns "" when nothing resolves (e.g. the configured icon theme is missing).
+    function resolveIcon(name) {
+        if (!name) return "";
+        if (name.startsWith("/")) return "file://" + name;
+        return Quickshell.iconPath(name, true);
+    }
+
     function iconPathFor(cls, title) {
         const clsLower = cls.toLowerCase();
         for (const v of [cls, clsLower, cls.replace(/-/g, ""), cls.split(".")[0]]) {
             if (!v) continue;
             const e = DesktopEntries.byId(v);
-            if (e && e.icon) return Quickshell.iconPath(e.icon, "application-x-executable");
+            const p = e ? resolveIcon(e.icon) : "";
+            if (p) return p;
         }
         const all = DesktopEntries.applications.values;
         for (const e of all) {
-            if (e.startupClass && e.startupClass.toLowerCase() === clsLower && e.icon)
-                return Quickshell.iconPath(e.icon, "application-x-executable");
+            if (e.startupClass && e.startupClass.toLowerCase() === clsLower) {
+                const p = resolveIcon(e.icon);
+                if (p) return p;
+            }
         }
         const titleLower = (title || "").toLowerCase();
         if (titleLower) {
             for (const e of all) {
                 const n = (e.name || "").toLowerCase();
-                if (n && titleLower.includes(n) && e.icon)
-                    return Quickshell.iconPath(e.icon, "application-x-executable");
+                if (n && titleLower.includes(n)) {
+                    const p = resolveIcon(e.icon);
+                    if (p) return p;
+                }
             }
         }
         for (const v of [cls, clsLower, cls.split("-")[0], cls.split(".").pop()]) {
-            if (!v) continue;
-            const p = Quickshell.iconPath(v, true);
+            const p = resolveIcon(v);
             if (p) return p;
         }
-        return Quickshell.iconPath("application-x-executable");
+        return resolveIcon("application-x-executable");
     }
 
     // One shortcut serves ALT+Tab and SUPER+Tab. While the overlay is open the
@@ -361,6 +372,24 @@ Item {
                                                     sourceSize.width: 64
                                                     sourceSize.height: 64
                                                     source: root.iconPathFor(frame.modelData.cls, frame.modelData.title)
+                                                    visible: source != "" && status !== Image.Error
+                                                }
+
+                                                Rectangle {
+                                                    anchors.centerIn: parent
+                                                    width: 56
+                                                    height: 56
+                                                    radius: 14
+                                                    visible: !icon.visible
+                                                    color: Qt.alpha(Color.accent, 0.3)
+
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: (frame.modelData.cls || "?").charAt(0).toUpperCase()
+                                                        color: Color.foreground
+                                                        font.pixelSize: 28
+                                                        font.bold: true
+                                                    }
                                                 }
 
                                                 property bool hoverSelect: frameHover.hovered && panel.hoverArmed
