@@ -6,7 +6,7 @@ The recommended implementation is an **[Omarchy](https://omarchy.org/) shell plu
 hosted by the `omarchy-shell` Quickshell process). Two legacy standalone implementations —
 a **Rust** GTK4 binary and a **Python** prototype — are kept in the repo.
 
-![Alt+Tab switcher overlay, grouped by workspace](preview.png)
+![Alt+Tab switcher overlay with window previews, grouped by workspace](preview.png)
 
 ```
 omarchy-plugin/   Omarchy shell plugin (QML) — recommended
@@ -73,6 +73,8 @@ Window previews are on by default. To show app icons instead, create
 ```
 
 Set `"previews": true` or delete the file to turn them back on.
+
+![Alt+Tab switcher overlay with previews disabled](preview-icons.png)
 
 See [`omarchy-plugin/README.md`](omarchy-plugin/README.md) for details.
 
