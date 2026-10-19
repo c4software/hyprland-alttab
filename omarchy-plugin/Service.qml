@@ -16,6 +16,30 @@ Item {
     property var flat: []
     property int selected: 0
 
+    // Window previews: tile height for the current opening (shrunk so the row
+    // fits the focused monitor) and Hyprland address -> Wayland toplevel handle
+    // for the screencopy source.
+    readonly property int maxThumbHeight: 150
+    property int thumbHeight: maxThumbHeight
+    property var toplevelByAddr: ({})
+    property bool previews: true
+
+    FileView {
+        path: Quickshell.env("HOME") + "/.config/omarchy/alttab.json"
+        watchChanges: true
+        printErrors: false
+        onLoaded: root.previews = Logic.parseConfig(text()).previews
+        onFileChanged: reload()
+        onLoadFailed: root.previews = true
+    }
+
+    function refreshToplevels() {
+        const map = {};
+        for (const t of Hyprland.toplevels.values)
+            if (t && t.wayland) map[String(t.address).replace(/^0x/, "")] = t.wayland;
+        toplevelByAddr = map;
+    }
+
     // Keyboard state observed by the overlay. The initial ALT press predates
     // the surface, so modifier state is only known from received events.
     property var heldKeys: ({})
@@ -34,10 +58,12 @@ Item {
 
     function requestOpen(reverse) {
         root.pendingReverseOpen = !!reverse;
+        if (root.previews) Hyprland.refreshToplevels();
+        if (root.shell && root.shell.appLibrary) root.shell.appLibrary.refreshIcons();
         clientsProc.running = true;
     }
 
-    // doFocus=false: Escape / pointer-left semantics — close without focusing.
+    // doFocus=false: Escape semantics — close without focusing.
     function close(doFocus) {
         if (!open) return;
         const entry = (doFocus && flat.length) ? flat[selected] : null;
@@ -90,10 +116,16 @@ Item {
     }
 
     // Returns "" when nothing resolves (e.g. the configured icon theme is missing).
+    // Qt's icon cache never re-scans, so apps installed after the shell started
+    // fall back to the shell's appLibrary, which keeps a live on-disk index.
     function resolveIcon(name) {
         if (!name) return "";
         if (name.startsWith("/")) return "file://" + name;
-        return Quickshell.iconPath(name, true);
+        const p = Quickshell.iconPath(name, true);
+        if (p) return p;
+        const lib = root.shell ? root.shell.appLibrary : null;
+        const found = lib ? lib.iconSource(name) : "";
+        return found && found !== Quickshell.iconPath("application-x-executable", true) ? found : "";
     }
 
     // Icon cascade: desktop entry by id variants → StartupWMClass scan →
@@ -225,6 +257,12 @@ Item {
                 const groups = Logic.groupClients(clients, activeWs);
                 const flat = Logic.flatten(groups);
                 if (!flat.length) return;
+                const mon = Hyprland.focusedMonitor;
+                const availW = mon ? mon.width / (mon.scale || 1) * 0.92 : 1800;
+                root.thumbHeight = root.previews
+                    ? Logic.fitThumbHeight(flat, groups.length, root.maxThumbHeight, availW)
+                    : 64;
+                if (root.previews) root.refreshToplevels();
                 root.groups = groups;
                 root.flat = flat;
                 root.selected = Logic.initialSelection(flat);
@@ -244,7 +282,6 @@ Item {
         PanelWindow {
             id: panel
 
-            property bool mouseInside: true
             // Hover only selects once the pointer really moved after the
             // overlay opened — the surface maps under a stationary cursor,
             // which must not steal the selection (GTK-version semantics).
@@ -259,8 +296,11 @@ Item {
             implicitWidth: content.implicitWidth
             implicitHeight: content.implicitHeight
 
+            // Always focus the selection; only Escape cancels. Cancelling
+            // when the pointer had left the overlay meant any cursor movement
+            // (or a focus warp) silently dropped the chosen window.
             function activate() {
-                root.close(mouseInside);
+                root.close(true);
             }
 
             // Fast-tap race: modifier released before the exclusive keyboard
@@ -359,10 +399,6 @@ Item {
                         panel.activate();
                 }
 
-                HoverHandler {
-                    onHoveredChanged: panel.mouseInside = hovered
-                }
-
                 Column {
                     id: column
                     anchors.centerIn: parent
@@ -452,9 +488,10 @@ Item {
                                                 required property var modelData
                                                 property bool isSelected: root.selected === modelData.flatIdx
                                                 onIsSelectedChanged: if (isSelected) strip.reveal(frame.mapToItem(groupsRow, 0, 0).x, frame.width)
+                                                readonly property var source: root.toplevelByAddr[modelData.addr.replace(/^0x/, "")] || null
 
-                                                width: icon.width + 24
-                                                height: icon.height + 20
+                                                width: thumb.width + 24
+                                                height: root.previews ? thumb.height + caption.height + 26 : thumb.height + 20
                                                 radius: 12
                                                 color: isSelected
                                                     ? Qt.alpha(Color.accent, frameHover.hovered ? 0.4 : 0.25)
@@ -463,32 +500,76 @@ Item {
                                                 border.width: modelData.hidden ? 1 : 0
                                                 border.color: Qt.alpha(Color.accent, 0.45)
 
-                                                Image {
-                                                    id: icon
-                                                    anchors.centerIn: parent
-                                                    width: 64
-                                                    height: 64
-                                                    sourceSize.width: 64
-                                                    sourceSize.height: 64
-                                                    source: root.iconPathFor(frame.modelData.cls, frame.modelData.title)
-                                                    visible: source != "" && status !== Image.Error
+                                                // Still frame of the window; the app icon stands in
+                                                // until it arrives or when capture is unavailable.
+                                                Rectangle {
+                                                    id: thumb
+                                                    x: 12
+                                                    y: root.previews ? 12 : 10
+                                                    width: root.previews ? Logic.tileWidth(frame.modelData, root.thumbHeight) : root.thumbHeight
+                                                    height: root.thumbHeight
+                                                    radius: 6
+                                                    color: root.previews ? Qt.alpha(Color.foreground, 0.06) : "transparent"
+                                                    clip: true
+
+                                                    ScreencopyView {
+                                                        id: capture
+                                                        anchors.fill: parent
+                                                        captureSource: root.open && root.previews ? frame.source : null
+                                                        live: false
+                                                        paintCursor: false
+                                                        constraintSize: Qt.size(Math.max(1, width), Math.max(1, height))
+                                                        visible: hasContent
+                                                    }
+
+                                                    Image {
+                                                        id: icon
+                                                        readonly property int size: capture.hasContent
+                                                            ? Math.round(Math.min(32, root.thumbHeight * 0.3))
+                                                            : root.previews ? Math.round(Math.min(64, root.thumbHeight * 0.55)) : 64
+                                                        // Centered placeholder, then a corner badge over the preview.
+                                                        x: capture.hasContent ? parent.width - size - 6 : (parent.width - size) / 2
+                                                        y: capture.hasContent ? parent.height - size - 6 : (parent.height - size) / 2
+                                                        width: size
+                                                        height: size
+                                                        sourceSize.width: 64
+                                                        sourceSize.height: 64
+                                                        source: root.iconPathFor(frame.modelData.cls, frame.modelData.title)
+                                                        visible: source != "" && status !== Image.Error
+                                                    }
+
+                                                    Rectangle {
+                                                        x: icon.x
+                                                        y: icon.y
+                                                        width: icon.size
+                                                        height: icon.size
+                                                        radius: icon.size / 4
+                                                        visible: !icon.visible
+                                                        color: Qt.alpha(Color.accent, 0.3)
+
+                                                        Text {
+                                                            anchors.centerIn: parent
+                                                            text: (frame.modelData.cls || "?").charAt(0).toUpperCase()
+                                                            color: Color.foreground
+                                                            font.pixelSize: Math.round(icon.size / 2)
+                                                            font.bold: true
+                                                        }
+                                                    }
                                                 }
 
-                                                Rectangle {
-                                                    anchors.centerIn: parent
-                                                    width: 56
-                                                    height: 56
-                                                    radius: 14
-                                                    visible: !icon.visible
-                                                    color: Qt.alpha(Color.accent, 0.3)
-
-                                                    Text {
-                                                        anchors.centerIn: parent
-                                                        text: (frame.modelData.cls || "?").charAt(0).toUpperCase()
-                                                        color: Color.foreground
-                                                        font.pixelSize: 28
-                                                        font.bold: true
-                                                    }
+                                                Text {
+                                                    id: caption
+                                                    anchors.top: thumb.bottom
+                                                    anchors.topMargin: 6
+                                                    anchors.horizontalCenter: thumb.horizontalCenter
+                                                    width: thumb.width
+                                                    visible: root.previews
+                                                    text: frame.modelData.title
+                                                    color: frame.isSelected ? Color.foreground : Qt.alpha(Color.foreground, 0.65)
+                                                    font.pixelSize: 11
+                                                    elide: Text.ElideRight
+                                                    horizontalAlignment: Text.AlignHCenter
+                                                    maximumLineCount: 1
                                                 }
 
                                                 property bool hoverSelect: frameHover.hovered && panel.hoverArmed
