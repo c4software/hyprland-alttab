@@ -328,9 +328,40 @@ Item {
                     anchors.centerIn: parent
                     spacing: 0
 
+                    // One long row of groups: with enough windows it is wider
+                    // than the screen, and the selection could sit past either
+                    // edge with nothing to show it. Cap it at the screen and
+                    // scroll the selected frame into view.
+                    Flickable {
+                        id: strip
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: Math.min(groupsRow.implicitWidth, panel.screen ? panel.screen.width - 120 : 1600)
+                        height: groupsRow.implicitHeight
+                        contentWidth: groupsRow.implicitWidth
+                        contentHeight: height
+                        clip: true
+                        interactive: contentWidth > width
+                        boundsBehavior: Flickable.StopAtBounds
+                        flickableDirection: Flickable.HorizontalFlick
+
+                        // Leave a frame's worth of margin, so the neighbour in
+                        // the scroll direction hints that there is more.
+                        function reveal(x, w) {
+                            if (contentWidth <= width)
+                                return;
+                            const margin = 48;
+                            if (x - margin < contentX)
+                                contentX = Math.max(0, x - margin);
+                            else if (x + w + margin > contentX + width)
+                                contentX = Math.min(contentWidth - width, x + w + margin - width);
+                        }
+
+                        Behavior on contentX {
+                            NumberAnimation { duration: 120; easing.type: Easing.OutQuad }
+                        }
+
                     Row {
                         id: groupsRow
-                        anchors.horizontalCenter: parent.horizontalCenter
                         spacing: 0
 
                         Repeater {
@@ -357,10 +388,16 @@ Item {
 
                                     Text {
                                         anchors.horizontalCenter: parent.horizontalCenter
-                                        text: modelData.name
+                                        text: Logic.shortWorkspaceName(modelData.name)
                                         color: Qt.alpha(Color.foreground, 0.5)
                                         font.pixelSize: 11
                                         bottomPadding: 4
+                                        // A name that is neither numbered nor
+                                        // slotted can still be long; keep the end,
+                                        // which is what tells two apart.
+                                        width: Math.min(implicitWidth, 240)
+                                        elide: Text.ElideLeft
+                                        horizontalAlignment: Text.AlignHCenter
                                     }
 
                                     Row {
@@ -374,6 +411,7 @@ Item {
                                                 id: frame
                                                 required property var modelData
                                                 property bool isSelected: root.selected === modelData.flatIdx
+                                                onIsSelectedChanged: if (isSelected) strip.reveal(frame.mapToItem(groupsRow, 0, 0).x, frame.width)
 
                                                 width: icon.width + 24
                                                 height: icon.height + 20
@@ -433,12 +471,13 @@ Item {
                             }
                         }
                     }
+                    }
 
                     // Fixed width/height so changing titles never resize the overlay.
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
                         topPadding: 10
-                        width: Math.min(groupsRow.width, 600)
+                        width: Math.min(strip.width, 600)
                         height: topPadding + 22
                         maximumLineCount: 1
                         text: root.flat.length
