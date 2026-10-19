@@ -18,7 +18,7 @@ python/           Legacy prototype
 
 - 🪟 **Visual switcher** on the layer-shell `Overlay` layer with exclusive keyboard focus
 - 🗂️ **Grouped by workspace** (active first), sorted by recency (`focusHistoryID`), pinned windows excluded
-- 🖼️ **App icons** resolved from `.desktop` files (id variants, `StartupWMClass`, title match for Chrome PWAs)
+- 🖼️ **App icons** resolved from `.desktop` files (id variants, `StartupWMClass`, launcher URL and whole-word title match for Chrome PWAs)
 - 🎨 **Theme-aware** — follows the active Omarchy theme automatically
 - ⌨️ Tab/Right → next, Shift+Tab/Left → previous, Return → activate, Escape → cancel,
   releasing ALT/SUPER → activate; hover selects, click activates
