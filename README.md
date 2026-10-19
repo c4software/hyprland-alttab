@@ -22,6 +22,8 @@ python/           Legacy prototype
   as a corner badge and its title underneath, so several windows of the same app are easy to tell
   apart. Icons are resolved from `.desktop` files (id variants, `StartupWMClass`, launcher URL and
   whole-word title match for Chrome PWAs) and stand in when a window can't be captured
+- 🔴 **Notification badges** — a red dot on windows whose app sent a notification since you last
+  looked at it (optional module, see [Configuration](#configuration))
 - 🎨 **Theme-aware** — follows the active Omarchy theme automatically
 - ⌨️ Tab/Right → next, Shift+Tab/Left → previous, Return → activate, Escape → cancel, P → toggle previews, Q → close window,
   releasing ALT/SUPER → activate; hover selects, click activates. ALT/SUPER+Shift+Tab opens on the
@@ -79,6 +81,19 @@ Set `"previews": true` or delete the file to turn them back on.
 > only available to bar widgets; `service` plugins like this one get no settings from the shell.
 
 ![Alt+Tab switcher overlay with previews disabled](preview-icons.png)
+
+Optional features live in [`omarchy-plugin/modules/`](omarchy-plugin/modules) and can be turned off
+one by one in the same file; a disabled module is not loaded at all:
+
+```json
+{ "modules": { "notificationBadges": false } }
+```
+
+- `notificationBadges` (on by default): a red dot on windows whose app sent a notification since
+  you last looked at it, read from omarchy-shell's notifications (on-screen and history). Browsers
+  are skipped, since their web apps all notify under the browser's name.
+
+![Alt+Tab switcher with a notification badge on Slack](preview-badge.png)
 
 See [`omarchy-plugin/README.md`](omarchy-plugin/README.md) for details.
 

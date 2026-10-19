@@ -1,4 +1,5 @@
 import QtQuick
+import QtQml
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -24,15 +25,52 @@ Item {
     property int thumbHeight: maxThumbHeight
     property var toplevelByAddr: ({})
     property bool previews: true
+    property var modules: Logic.defaultModules()
 
     FileView {
         id: configFile
         path: Quickshell.env("HOME") + "/.config/omarchy/alttab.json"
         watchChanges: true
         printErrors: false
-        onLoaded: root.previews = Logic.parseConfig(text()).previews
+        onLoaded: {
+            const config = Logic.parseConfig(text());
+            root.previews = config.previews;
+            root.modules = config.modules;
+        }
         onFileChanged: reload()
-        onLoadFailed: root.previews = true
+        onLoadFailed: {
+            root.previews = true;
+            root.modules = Logic.defaultModules();
+        }
+    }
+
+    // Optional modules, each loaded only when enabled in alttab.json. A module
+    // may define refresh(flat), called when the overlay opens, and expose
+    // badges (address -> true), drawn as a dot on those windows.
+    Instantiator {
+        id: moduleLoaders
+        model: Logic.moduleList()
+        delegate: Loader {
+            required property var modelData
+            active: !!root.modules[modelData.id]
+            source: Qt.resolvedUrl("modules/" + modelData.file)
+        }
+    }
+
+    function refreshModules(flat) {
+        for (let i = 0; i < moduleLoaders.count; i++) {
+            const m = moduleLoaders.objectAt(i).item;
+            if (m && typeof m.refresh === "function") m.refresh(flat);
+        }
+    }
+
+    function hasBadge(addr) {
+        for (let i = 0; i < moduleLoaders.count; i++) {
+            const loader = moduleLoaders.objectAt(i);
+            const m = loader ? loader.item : null;
+            if (m && m.badges && m.badges[addr]) return true;
+        }
+        return false;
     }
 
     function fitThumbs(flat, groupCount) {
@@ -305,6 +343,7 @@ Item {
                 const flat = Logic.flatten(groups);
                 if (!flat.length) return;
                 root.fitThumbs(flat, groups.length);
+                root.refreshModules(flat);
                 root.groups = groups;
                 root.flat = flat;
                 root.selected = root.pendingReverseOpen ? flat.length - 1 : Logic.initialSelection(flat);
@@ -603,6 +642,18 @@ Item {
                                                             font.bold: true
                                                         }
                                                     }
+                                                }
+
+                                                Rectangle {
+                                                    visible: root.hasBadge(frame.modelData.addr)
+                                                    x: thumb.x + thumb.width - width / 2 - 2
+                                                    y: thumb.y - height / 2 + 2
+                                                    width: 14
+                                                    height: 14
+                                                    radius: 7
+                                                    color: "#e5484d"
+                                                    border.width: 2
+                                                    border.color: Color.background
                                                 }
 
                                                 Text {

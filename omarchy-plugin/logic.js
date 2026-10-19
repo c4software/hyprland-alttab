@@ -22,12 +22,28 @@ function parseTheme(text) {
     return theme;
 }
 
+// Optional modules (modules/<file>) and whether they load by default.
+function moduleList() {
+    return [
+        { id: "notificationBadges", file: "NotificationBadges.qml", enabled: true },
+    ];
+}
+
+function defaultModules() {
+    const m = {};
+    for (const mod of moduleList()) m[mod.id] = mod.enabled;
+    return m;
+}
+
 // Parse ~/.config/omarchy/alttab.json; missing or invalid keys keep defaults.
 function parseConfig(text) {
-    const config = { previews: true };
+    const config = { previews: true, modules: defaultModules() };
     let data = null;
     try { data = JSON.parse(text); } catch (e) { return config; }
     if (data && typeof data.previews === "boolean") config.previews = data.previews;
+    if (data && data.modules && typeof data.modules === "object")
+        for (const id in config.modules)
+            if (typeof data.modules[id] === "boolean") config.modules[id] = data.modules[id];
     return config;
 }
 

@@ -57,12 +57,20 @@ hyprctl dispatch 'hl.dsp.global("omarchy-alttab:next")'   # opens the overlay
 Optional `~/.config/omarchy/alttab.json`, picked up live:
 
 ```json
-{ "previews": false }
+{ "previews": false, "modules": { "notificationBadges": false } }
 ```
 
 - `previews` (default `true`): `false` shows app icons instead of window
   previews; `true` (or deleting the file) turns them back on. Pressing `P`
   while the overlay is open toggles it and saves the choice to this file.
+- `modules`: optional features living in [`modules/`](modules), each on or
+  off by id; a disabled module is not loaded at all.
+  - `notificationBadges` (default `true`): a red dot on windows whose app sent a
+    notification since you last looked at it, read from omarchy-shell's
+    notification files (on-screen toasts and history). The app name is
+    matched against the window class like `omarchy-hyprland-focus-app` does;
+    browsers are skipped since their web apps all notify under the browser's
+    name.
 
 Omarchy only offers a settings UI (manifest `schema`) to bar widgets, so a
 `service` plugin like this one keeps its options in its own file.
