@@ -75,6 +75,9 @@ directly (applied live, no shell restart needed):
 
 Set `"previews": true` or delete the file to turn them back on.
 
+> Why a separate file? Omarchy's settings UI (the `schema` declared in a plugin manifest) is
+> only available to bar widgets; `service` plugins like this one get no settings from the shell.
+
 ![Alt+Tab switcher overlay with previews disabled](preview-icons.png)
 
 See [`omarchy-plugin/README.md`](omarchy-plugin/README.md) for details.

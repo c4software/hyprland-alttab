@@ -64,6 +64,9 @@ Optional `~/.config/omarchy/alttab.json`, picked up live:
   previews; `true` (or deleting the file) turns them back on. Pressing `P`
   while the overlay is open toggles it and saves the choice to this file.
 
+Omarchy only offers a settings UI (manifest `schema`) to bar widgets, so a
+`service` plugin like this one keeps its options in its own file.
+
 ## Behavior
 
 - ALT+Tab / SUPER+Tab: opens the overlay, pressing again advances the selection.
