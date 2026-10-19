@@ -68,9 +68,10 @@ Optional `~/.config/omarchy/alttab.json`, picked up live:
   - `notificationBadges` (default `true`): a red dot on windows whose app sent a
     notification since you last looked at it, read from omarchy-shell's
     notification files (on-screen toasts and history). The app name is
-    matched against the window class like `omarchy-hyprland-focus-app` does;
-    browsers are skipped since their web apps all notify under the browser's
-    name.
+    matched against the window class like `omarchy-hyprland-focus-app` does.
+    Browsers notify under their own name, so for them the site Chromium puts
+    first in the body (`web.whatsapp.com`) is matched against web app windows
+    (`chrome-web.whatsapp.com__-Default`); a regular tab gets no badge.
 
 Omarchy only offers a settings UI (manifest `schema`) to bar widgets, so a
 `service` plugin like this one keeps its options in its own file.

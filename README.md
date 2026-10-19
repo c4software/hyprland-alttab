@@ -90,8 +90,9 @@ one by one in the same file; a disabled module is not loaded at all:
 ```
 
 - `notificationBadges` (on by default): a red dot on windows whose app sent a notification since
-  you last looked at it, read from omarchy-shell's notifications (on-screen and history). Browsers
-  are skipped, since their web apps all notify under the browser's name.
+  you last looked at it, read from omarchy-shell's notifications (on-screen and history). Chromium
+  web apps (WhatsApp, Outlook…) are matched through the site Chromium puts in the notification;
+  a notification from a regular browser tab gets no badge.
 
 ![Alt+Tab switcher with a notification badge on Slack](preview-badge.png)
 
