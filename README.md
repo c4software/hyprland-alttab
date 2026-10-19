@@ -23,7 +23,7 @@ python/           Legacy prototype
   apart. Icons are resolved from `.desktop` files (id variants, `StartupWMClass`, launcher URL and
   whole-word title match for Chrome PWAs) and stand in when a window can't be captured
 - 🎨 **Theme-aware** — follows the active Omarchy theme automatically
-- ⌨️ Tab/Right → next, Shift+Tab/Left → previous, Return → activate, Escape → cancel, P → toggle previews,
+- ⌨️ Tab/Right → next, Shift+Tab/Left → previous, Return → activate, Escape → cancel, P → toggle previews, Q → close window,
   releasing ALT/SUPER → activate; hover selects, click activates. ALT/SUPER+Shift+Tab opens on the
   last window of the list
 - 🫀 Stays open while ALT or SUPER is physically held (verified via `hl.is_key_down` when no

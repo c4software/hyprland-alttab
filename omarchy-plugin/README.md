@@ -72,7 +72,7 @@ Omarchy only offers a settings UI (manifest `schema`) to bar widgets, so a
 - ALT+Tab / SUPER+Tab: opens the overlay, pressing again advances the selection.
 - Tab/Right → next, Shift+Tab/Left → previous, Enter → activate,
   Escape → close without focusing, releasing ALT/SUPER → activate,
-  P → toggle window previews / app icons.
+  P → toggle window previews / app icons, Q → close the selected window.
 - ALT/SUPER+Shift+Tab: opens the overlay on the last window of the list,
   pressing again steps backward.
 - The overlay stays open as long as ALT or SUPER is physically held

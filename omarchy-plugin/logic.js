@@ -104,6 +104,19 @@ function flatten(groups) {
     return flat;
 }
 
+// Groups without the window at addr; empty groups dropped, flatIdx renumbered.
+function removeEntry(groups, addr) {
+    let flatIdx = 0;
+    const out = [];
+    for (const g of groups) {
+        const entries = g.entries
+            .filter(e => e.addr !== addr)
+            .map(e => Object.assign({}, e, { flatIdx: flatIdx++ }));
+        if (entries.length) out.push({ name: g.name, entries: entries });
+    }
+    return out;
+}
+
 // Second-most-recently-used window: smallest fhid > 0, fallback 0.
 function initialSelection(flat) {
     let best = -1, bestFhid = Infinity;

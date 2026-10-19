@@ -55,6 +55,23 @@ Item {
         root.fitThumbs(root.flat, root.groups.length);
     }
 
+    // Close the selected window and drop it from the list; the overlay stays open.
+    function closeSelected() {
+        const entry = flat[selected];
+        if (!entry) return;
+        Hyprland.dispatch('hl.dsp.window.close({ window = "address:' + entry.addr + '" })');
+        const groups = Logic.removeEntry(root.groups, entry.addr);
+        const remaining = Logic.flatten(groups);
+        if (!remaining.length) {
+            root.close(false);
+            return;
+        }
+        root.fitThumbs(remaining, groups.length);
+        root.groups = groups;
+        root.flat = remaining;
+        root.selected = Math.min(root.selected, remaining.length - 1);
+    }
+
     function refreshToplevels() {
         const map = {};
         for (const t of Hyprland.toplevels.values)
@@ -408,6 +425,9 @@ Item {
                         event.accepted = true;
                     } else if (event.key === Qt.Key_P && !event.isAutoRepeat) {
                         root.togglePreviews();
+                        event.accepted = true;
+                    } else if (event.key === Qt.Key_Q && !event.isAutoRepeat) {
+                        root.closeSelected();
                         event.accepted = true;
                     }
                 }
