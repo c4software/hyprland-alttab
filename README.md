@@ -23,7 +23,7 @@ python/           Legacy prototype
   apart. Icons are resolved from `.desktop` files (id variants, `StartupWMClass`, launcher URL and
   whole-word title match for Chrome PWAs) and stand in when a window can't be captured
 - 🎨 **Theme-aware** — follows the active Omarchy theme automatically
-- ⌨️ Tab/Right → next, Shift+Tab/Left → previous, Return → activate, Escape → cancel,
+- ⌨️ Tab/Right → next, Shift+Tab/Left → previous, Return → activate, Escape → cancel, P → toggle previews,
   releasing ALT/SUPER → activate; hover selects, click activates. ALT/SUPER+Shift+Tab opens on the
   last window of the list
 - 🫀 Stays open while ALT or SUPER is physically held (verified via `hl.is_key_down` when no
@@ -65,8 +65,9 @@ hyprctl dispatch 'hl.dsp.global("omarchy-alttab:next")'
 
 ### Configuration
 
-Window previews are on by default. To show app icons instead, create
-`~/.config/omarchy/alttab.json` (applied live, no shell restart needed):
+Window previews are on by default. Press `P` while the overlay is open to switch between previews
+and app icons; the choice is saved to `~/.config/omarchy/alttab.json`. You can also edit that file
+directly (applied live, no shell restart needed):
 
 ```json
 { "previews": false }

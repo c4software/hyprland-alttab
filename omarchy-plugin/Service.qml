@@ -25,12 +25,33 @@ Item {
     property bool previews: true
 
     FileView {
+        id: configFile
         path: Quickshell.env("HOME") + "/.config/omarchy/alttab.json"
         watchChanges: true
         printErrors: false
         onLoaded: root.previews = Logic.parseConfig(text()).previews
         onFileChanged: reload()
         onLoadFailed: root.previews = true
+    }
+
+    function fitThumbs(flat, groupCount) {
+        const mon = Hyprland.focusedMonitor;
+        const availW = mon ? mon.width / (mon.scale || 1) * 0.92 : 1800;
+        root.thumbHeight = root.previews
+            ? Logic.fitThumbHeight(flat, groupCount, root.maxThumbHeight, availW)
+            : 64;
+        if (root.previews) root.refreshToplevels();
+    }
+
+    // Switch between previews and icons, persisted to alttab.json.
+    function togglePreviews() {
+        let data = {};
+        try { data = JSON.parse(configFile.text()) || {}; } catch (e) {}
+        root.previews = !root.previews;
+        data.previews = root.previews;
+        configFile.setText(JSON.stringify(data, null, 2) + "\n");
+        if (root.previews) Hyprland.refreshToplevels();
+        root.fitThumbs(root.flat, root.groups.length);
     }
 
     function refreshToplevels() {
@@ -265,12 +286,7 @@ Item {
                 const groups = Logic.groupClients(clients, activeWs);
                 const flat = Logic.flatten(groups);
                 if (!flat.length) return;
-                const mon = Hyprland.focusedMonitor;
-                const availW = mon ? mon.width / (mon.scale || 1) * 0.92 : 1800;
-                root.thumbHeight = root.previews
-                    ? Logic.fitThumbHeight(flat, groups.length, root.maxThumbHeight, availW)
-                    : 64;
-                if (root.previews) root.refreshToplevels();
+                root.fitThumbs(flat, groups.length);
                 root.groups = groups;
                 root.flat = flat;
                 root.selected = root.pendingReverseOpen ? flat.length - 1 : Logic.initialSelection(flat);
@@ -388,6 +404,9 @@ Item {
                         event.accepted = true;
                     } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                         panel.activate();
+                        event.accepted = true;
+                    } else if (event.key === Qt.Key_P && !event.isAutoRepeat) {
+                        root.togglePreviews();
                         event.accepted = true;
                     }
                 }

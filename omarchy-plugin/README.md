@@ -61,13 +61,15 @@ Optional `~/.config/omarchy/alttab.json`, picked up live:
 ```
 
 - `previews` (default `true`): `false` shows app icons instead of window
-  previews; `true` (or deleting the file) turns them back on.
+  previews; `true` (or deleting the file) turns them back on. Pressing `P`
+  while the overlay is open toggles it and saves the choice to this file.
 
 ## Behavior
 
 - ALT+Tab / SUPER+Tab: opens the overlay, pressing again advances the selection.
 - Tab/Right → next, Shift+Tab/Left → previous, Enter → activate,
-  Escape → close without focusing, releasing ALT/SUPER → activate.
+  Escape → close without focusing, releasing ALT/SUPER → activate,
+  P → toggle window previews / app icons.
 - ALT/SUPER+Shift+Tab: opens the overlay on the last window of the list,
   pressing again steps backward.
 - The overlay stays open as long as ALT or SUPER is physically held
