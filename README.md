@@ -24,7 +24,8 @@ python/           Legacy prototype
   whole-word title match for Chrome PWAs) and stand in when a window can't be captured
 - 🎨 **Theme-aware** — follows the active Omarchy theme automatically
 - ⌨️ Tab/Right → next, Shift+Tab/Left → previous, Return → activate, Escape → cancel,
-  releasing ALT/SUPER → activate; hover selects, click activates
+  releasing ALT/SUPER → activate; hover selects, click activates. ALT/SUPER+Shift+Tab opens on the
+  last window of the list
 - 🫀 Stays open while ALT or SUPER is physically held (verified via `hl.is_key_down` when no
   keyboard event reaches the overlay)
 
@@ -61,6 +62,17 @@ The shortcut must appear in `hyprctl globalshortcuts`. Manual trigger for testin
 ```bash
 hyprctl dispatch 'hl.dsp.global("omarchy-alttab:next")'
 ```
+
+### Configuration
+
+Window previews are on by default. To show app icons instead, create
+`~/.config/omarchy/alttab.json` (applied live, no shell restart needed):
+
+```json
+{ "previews": false }
+```
+
+Set `"previews": true` or delete the file to turn them back on.
 
 See [`omarchy-plugin/README.md`](omarchy-plugin/README.md) for details.
 

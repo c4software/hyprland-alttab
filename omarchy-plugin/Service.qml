@@ -46,6 +46,14 @@ Item {
     property bool sawKeyEvent: false
     property bool modsHeld: false
 
+    // Modifier press/release keycodes are not symmetric under some xkb options
+    // (shift:both_capslock_cancel releases Shift as CapsLock); modsHeld covers them.
+    function isModifierKey(key) {
+        return key === Qt.Key_Shift || key === Qt.Key_Control || key === Qt.Key_Alt
+            || key === Qt.Key_Meta || key === Qt.Key_Super_L || key === Qt.Key_Super_R
+            || key === Qt.Key_CapsLock || key === Qt.Key_AltGr;
+    }
+
     function heldEmpty() {
         for (const k in heldKeys) return false;
         return true;
@@ -199,8 +207,8 @@ Item {
         }
     }
 
-    // Mirrors "next" for the reverse direction (e.g. ALT+SHIFT+TAB), so a cold
-    // press opens the overlay already stepped one back instead of forward.
+    // Mirrors "next" for the reverse direction (e.g. ALT+SHIFT+TAB); a cold
+    // press opens the overlay on the last window of the list.
     GlobalShortcut {
         appid: "omarchy-alttab"
         name: "prev"
@@ -265,8 +273,7 @@ Item {
                 if (root.previews) root.refreshToplevels();
                 root.groups = groups;
                 root.flat = flat;
-                root.selected = Logic.initialSelection(flat);
-                if (root.pendingReverseOpen) root.prev();
+                root.selected = root.pendingReverseOpen ? flat.length - 1 : Logic.initialSelection(flat);
                 root.pendingReverseOpen = false;
                 root.heldKeys = {};
                 root.sawKeyEvent = false;
@@ -371,7 +378,8 @@ Item {
                         event.accepted = true;
                         return;
                     }
-                    root.heldKeys[event.key] = true;
+                    if (!root.isModifierKey(event.key))
+                        root.heldKeys[event.key] = true;
                     if (event.key === Qt.Key_Tab || event.key === Qt.Key_Right) {
                         root.next();
                         event.accepted = true;
@@ -395,7 +403,7 @@ Item {
                     const altHeld = (event.modifiers & Qt.AltModifier) && !altReleasing;
                     const superHeld = (event.modifiers & Qt.MetaModifier) && !superReleasing;
                     root.modsHeld = !!(altHeld || superHeld);
-                    if (root.heldEmpty() && !root.modsHeld)
+                    if (!root.modsHeld && (altReleasing || superReleasing || root.heldEmpty()))
                         panel.activate();
                 }
 
