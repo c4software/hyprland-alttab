@@ -12,6 +12,7 @@ Item {
     property var shell: null
 
     property bool open: false
+    onOpenChanged: Hyprland.dispatch('hl.dsp.submap("' + (open ? "alttab" : "reset") + '")')
     property var groups: []
     property var flat: []
     property int selected: 0
