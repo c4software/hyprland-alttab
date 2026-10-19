@@ -22,6 +22,15 @@ function parseTheme(text) {
     return theme;
 }
 
+// Parse ~/.config/omarchy/alttab.json; missing or invalid keys keep defaults.
+function parseConfig(text) {
+    const config = { previews: true };
+    let data = null;
+    try { data = JSON.parse(text); } catch (e) { return config; }
+    if (data && typeof data.previews === "boolean") config.previews = data.previews;
+    return config;
+}
+
 // Workspace names are free-form. Plugins that give every monitor its own set
 // (per-monitor-workspaces, for one) name them "<monitor description>:<slot>",
 // e.g. "LG Electronics LG ULTRAFINE 508NTHMJJ505:2" — a group header several

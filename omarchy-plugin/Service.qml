@@ -22,6 +22,16 @@ Item {
     readonly property int maxThumbHeight: 150
     property int thumbHeight: maxThumbHeight
     property var toplevelByAddr: ({})
+    property bool previews: true
+
+    FileView {
+        path: Quickshell.env("HOME") + "/.config/omarchy/alttab.json"
+        watchChanges: true
+        printErrors: false
+        onLoaded: root.previews = Logic.parseConfig(text()).previews
+        onFileChanged: reload()
+        onLoadFailed: root.previews = true
+    }
 
     function refreshToplevels() {
         const map = {};
@@ -48,7 +58,7 @@ Item {
 
     function requestOpen(reverse) {
         root.pendingReverseOpen = !!reverse;
-        Hyprland.refreshToplevels();
+        if (root.previews) Hyprland.refreshToplevels();
         if (root.shell && root.shell.appLibrary) root.shell.appLibrary.refreshIcons();
         clientsProc.running = true;
     }
@@ -249,8 +259,10 @@ Item {
                 if (!flat.length) return;
                 const mon = Hyprland.focusedMonitor;
                 const availW = mon ? mon.width / (mon.scale || 1) * 0.92 : 1800;
-                root.thumbHeight = Logic.fitThumbHeight(flat, groups.length, root.maxThumbHeight, availW);
-                root.refreshToplevels();
+                root.thumbHeight = root.previews
+                    ? Logic.fitThumbHeight(flat, groups.length, root.maxThumbHeight, availW)
+                    : 64;
+                if (root.previews) root.refreshToplevels();
                 root.groups = groups;
                 root.flat = flat;
                 root.selected = Logic.initialSelection(flat);
@@ -479,7 +491,7 @@ Item {
                                                 readonly property var source: root.toplevelByAddr[modelData.addr.replace(/^0x/, "")] || null
 
                                                 width: thumb.width + 24
-                                                height: thumb.height + caption.height + 26
+                                                height: root.previews ? thumb.height + caption.height + 26 : thumb.height + 20
                                                 radius: 12
                                                 color: isSelected
                                                     ? Qt.alpha(Color.accent, frameHover.hovered ? 0.4 : 0.25)
@@ -493,17 +505,17 @@ Item {
                                                 Rectangle {
                                                     id: thumb
                                                     x: 12
-                                                    y: 12
-                                                    width: Logic.tileWidth(frame.modelData, root.thumbHeight)
+                                                    y: root.previews ? 12 : 10
+                                                    width: root.previews ? Logic.tileWidth(frame.modelData, root.thumbHeight) : root.thumbHeight
                                                     height: root.thumbHeight
                                                     radius: 6
-                                                    color: Qt.alpha(Color.foreground, 0.06)
+                                                    color: root.previews ? Qt.alpha(Color.foreground, 0.06) : "transparent"
                                                     clip: true
 
                                                     ScreencopyView {
                                                         id: capture
                                                         anchors.fill: parent
-                                                        captureSource: root.open ? frame.source : null
+                                                        captureSource: root.open && root.previews ? frame.source : null
                                                         live: false
                                                         paintCursor: false
                                                         constraintSize: Qt.size(Math.max(1, width), Math.max(1, height))
@@ -514,7 +526,7 @@ Item {
                                                         id: icon
                                                         readonly property int size: capture.hasContent
                                                             ? Math.round(Math.min(32, root.thumbHeight * 0.3))
-                                                            : Math.round(Math.min(64, root.thumbHeight * 0.55))
+                                                            : root.previews ? Math.round(Math.min(64, root.thumbHeight * 0.55)) : 64
                                                         // Centered placeholder, then a corner badge over the preview.
                                                         x: capture.hasContent ? parent.width - size - 6 : (parent.width - size) / 2
                                                         y: capture.hasContent ? parent.height - size - 6 : (parent.height - size) / 2
@@ -551,6 +563,7 @@ Item {
                                                     anchors.topMargin: 6
                                                     anchors.horizontalCenter: thumb.horizontalCenter
                                                     width: thumb.width
+                                                    visible: root.previews
                                                     text: frame.modelData.title
                                                     color: frame.isSelected ? Color.foreground : Qt.alpha(Color.foreground, 0.65)
                                                     font.pixelSize: 11
