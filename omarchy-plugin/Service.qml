@@ -552,6 +552,7 @@ Item {
                                     Text {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         text: Logic.shortWorkspaceName(modelData.name)
+                                        textFormat: Text.PlainText
                                         color: Qt.alpha(Color.foreground, 0.5)
                                         font.pixelSize: 11
                                         bottomPadding: 4
@@ -637,6 +638,7 @@ Item {
                                                         Text {
                                                             anchors.centerIn: parent
                                                             text: (frame.modelData.cls || "?").charAt(0).toUpperCase()
+                                                            textFormat: Text.PlainText
                                                             color: Color.foreground
                                                             font.pixelSize: Math.round(icon.size / 2)
                                                             font.bold: true
@@ -664,6 +666,7 @@ Item {
                                                     width: thumb.width
                                                     visible: root.previews
                                                     text: frame.modelData.title
+                                                    textFormat: Text.PlainText
                                                     color: frame.isSelected ? Color.foreground : Qt.alpha(Color.foreground, 0.65)
                                                     font.pixelSize: 11
                                                     elide: Text.ElideRight
@@ -703,6 +706,7 @@ Item {
                         text: root.flat.length
                             ? root.flat[root.selected].cls + "  —  " + root.flat[root.selected].title
                             : ""
+                        textFormat: Text.PlainText
                         color: Color.foreground
                         elide: Text.ElideRight
                         horizontalAlignment: Text.AlignHCenter
