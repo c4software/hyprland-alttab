@@ -50,13 +50,16 @@ function parseConfig(text) {
 // Workspace names are free-form. Plugins that give every monitor its own set
 // (per-monitor-workspaces, for one) name them "<monitor description>:<slot>",
 // e.g. "LG Electronics LG ULTRAFINE 508NTHMJJ505:2" — a group header several
-// times wider than the windows under it. Keep the trailing slot for those;
-// plain names and "special:" workspaces are returned unchanged.
+// times wider than the windows under it. Keep the trailing slot for those.
+// Omarchy numbers workspaces in blocks of ten per monitor (11-20, 31-40…) and
+// shows the slot 1-10, as its bar does. Other names are returned unchanged.
 function shortWorkspaceName(name) {
     const text = String(name === null || name === undefined ? "" : name);
     if (text.indexOf("special:") === 0) return text;
     const match = text.match(/^.+:(\d+)$/);
-    return match ? match[1] : text;
+    if (match) return match[1];
+    if (/^\d+$/.test(text) && Number(text) > 0) return String((Number(text) - 1) % 10 + 1);
+    return text;
 }
 
 // Group clients by workspace: active workspace first then ascending id;
