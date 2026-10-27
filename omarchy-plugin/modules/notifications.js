@@ -21,14 +21,22 @@ function appMatchesClass(app, cls) {
     return c.indexOf(a) >= 0 || a.indexOf(c) >= 0;
 }
 
-// One notification file per line; unreadable or partial lines are skipped.
+// One notification file per line, holding one row (timestamp in ms) or a list
+// of rows (ts in s, origin anchor kept in rawBody); unreadable lines are skipped.
 function parseNotifications(text) {
     const out = [];
     for (const line of String(text || "").split("\n")) {
-        let n = null;
-        try { n = JSON.parse(line); } catch (e) { continue; }
-        if (n && typeof n.app === "string" && n.app && typeof n.timestamp === "number")
-            out.push({ app: n.app, body: typeof n.body === "string" ? n.body : "", timestamp: n.timestamp });
+        let parsed = null;
+        try { parsed = JSON.parse(line); } catch (e) { continue; }
+        for (const n of Array.isArray(parsed) ? parsed : [parsed]) {
+            if (!n || typeof n.app !== "string" || !n.app) continue;
+            const timestamp = typeof n.timestamp === "number" ? n.timestamp
+                : typeof n.ts === "number" ? n.ts * 1000 : null;
+            if (timestamp === null) continue;
+            const body = typeof n.rawBody === "string" && n.rawBody ? n.rawBody
+                : typeof n.body === "string" ? n.body : "";
+            out.push({ app: n.app, body: body, timestamp: timestamp });
+        }
     }
     return out;
 }
