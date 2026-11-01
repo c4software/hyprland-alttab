@@ -64,7 +64,7 @@ function shortWorkspaceName(name) {
 
 // Group clients by workspace: active workspace first then ascending id;
 // within a group the focused window (fhid == 0) first, then ascending fhid.
-// Pinned windows excluded, empty titles replaced with "-".
+// Pinned windows and the Quake console excluded, empty titles replaced with "-".
 // groupIdx: 1-based position in the client's Hyprland group, 0 if ungrouped.
 // w/h: window size, used for the preview aspect ratio.
 // Returns [{ name, entries: [{ cls, title, addr, hidden, fhid, flatIdx, groupIdx, w, h }] }].
@@ -73,7 +73,7 @@ function groupClients(clients, activeWsId) {
     const wsMap = {};
 
     for (const c of clients) {
-        if (c.pinned) continue;
+        if (c.pinned || c.workspace.name === "special:qconsole") continue;
         const wsId = c.workspace.id;
         if (!(wsId in wsMap)) {
             wsOrder.push(wsId);

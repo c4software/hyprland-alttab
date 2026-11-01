@@ -93,6 +93,7 @@ Omarchy only offers a settings UI (manifest `schema`) to bar widgets, so a
   streamed), sized to its aspect ratio and shrunk to fit the monitor; the app
   icon is shown instead when capture is unavailable or previews are disabled.
 - Windows grouped by workspace (active first), sorted by recency
-  (focusHistoryID), pinned windows excluded.
+  (focusHistoryID), pinned windows and the `special:qconsole` workspace
+  excluded.
 - Colors: the shell's `Color` singleton (`qs.Commons`) — follows the Omarchy
   theme automatically.
