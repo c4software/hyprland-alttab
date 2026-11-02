@@ -259,7 +259,9 @@ Item {
             }
             if (best) return best;
         }
+        // The class is set by the app: only a bare theme name may reach the loader.
         for (const v of [cls, clsLower, cls.split("-")[0], cls.split(".").pop()]) {
+            if (v.includes("/")) continue;
             const p = resolveIcon(v);
             if (p) return p;
         }
