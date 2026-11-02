@@ -13,7 +13,76 @@ Item {
     property var shell: null
 
     property bool open: false
-    onOpenChanged: Hyprland.dispatch('hl.dsp.submap("' + (open ? "alttab" : "reset") + '")')
+
+    // The overlay takes no keyboard focus: Hyprland refuses window focus while
+    // an exclusive layer holds the keyboard, and focus follows the selection.
+    // The keys live in the "alttab" submap from alttab-bindings.lua instead,
+    // active while the switcher is open.
+    onOpenChanged: {
+        submapEntered = false;
+        Hyprland.dispatch('hl.dsp.submap("' + (open ? "alttab" : "reset") + '")');
+        shown = false;
+        if (open) revealTimer.restart();
+    }
+
+    // Escape resets the submap from Hyprland itself, so it still works if the
+    // shell dies mid-switch; the reset is the cancel signal. The reset of a
+    // previous close can arrive after a quick reopen: only a reset after the
+    // submap was entered counts.
+    property bool submapEntered: false
+
+    Connections {
+        target: Hyprland
+        function onRawEvent(event) {
+            if (event.name !== "submap" || !root.open) return;
+            if (event.data === "alttab") root.submapEntered = true;
+            else if (root.submapEntered) root.close(false);
+        }
+        function onActiveToplevelChanged() {
+            if (root.open || focusTimer.running || !Hyprland.activeToplevel) return;
+            root.history = Logic.noteFocus(root.history, Hyprland.activeToplevel.address);
+        }
+    }
+
+    // The overlay appears only once the modifier has been held this long, so
+    // a quick tap switches windows without flashing it.
+    readonly property int revealDelay: 350
+    property bool shown: false
+
+    Timer {
+        id: revealTimer
+        interval: root.revealDelay
+        onTriggered: root.shown = root.open
+    }
+
+    // Fast-tap race: the modifier can be released before the submap is
+    // active, so its release bind never fires. Poll the compositor for the
+    // real modifier state (the GDK query of the Rust version); this also
+    // closes the switcher if a release bind is ever missed.
+    Timer {
+        interval: 150
+        repeat: true
+        running: root.open
+        onTriggered: modCheck.running = true
+    }
+
+    Process {
+        id: modCheck
+        command: ["hyprctl", "eval",
+            'error(tostring(hl.is_key_down("Alt_L") or hl.is_key_down("Alt_R") or hl.is_key_down("Super_L") or hl.is_key_down("Super_R")))']
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (root.open && !text.trim().endsWith("true"))
+                    root.close(true);
+            }
+        }
+    }
+
+    // The switcher's own focus history (address keys, most recent first).
+    // Focus changes while it is open or committing are not recorded, so the
+    // windows passed while browsing do not count as recently used.
+    property var history: []
+
     property var groups: []
     property var flat: []
     property int selected: 0
@@ -98,6 +167,7 @@ Item {
         const entry = flat[selected];
         if (!entry) return;
         Hyprland.dispatch('hl.dsp.window.close({ window = "address:' + entry.addr + '" })');
+        if (entry.addr === root.originAddr) root.originAddr = "";
         const groups = Logic.removeEntry(root.groups, entry.addr);
         const remaining = Logic.flatten(groups);
         if (!remaining.length) {
@@ -108,6 +178,7 @@ Item {
         root.groups = groups;
         root.flat = remaining;
         root.selected = Math.min(root.selected, remaining.length - 1);
+        root.liveFocus();
     }
 
     function refreshToplevels() {
@@ -117,27 +188,8 @@ Item {
         toplevelByAddr = map;
     }
 
-    // Keyboard state observed by the overlay. The initial ALT press predates
-    // the surface, so modifier state is only known from received events.
-    property var heldKeys: ({})
-    property bool sawKeyEvent: false
-    property bool modsHeld: false
-
-    // Modifier press/release keycodes are not symmetric under some xkb options
-    // (shift:both_capslock_cancel releases Shift as CapsLock); modsHeld covers them.
-    function isModifierKey(key) {
-        return key === Qt.Key_Shift || key === Qt.Key_Control || key === Qt.Key_Alt
-            || key === Qt.Key_Meta || key === Qt.Key_Super_L || key === Qt.Key_Super_R
-            || key === Qt.Key_CapsLock || key === Qt.Key_AltGr;
-    }
-
-    function heldEmpty() {
-        for (const k in heldKeys) return false;
-        return true;
-    }
-
-    function next() { if (flat.length) selected = (selected + 1) % flat.length }
-    function prev() { if (flat.length) selected = (selected + flat.length - 1) % flat.length }
+    function next() { if (flat.length) { selected = (selected + 1) % flat.length; liveFocus(); } }
+    function prev() { if (flat.length) { selected = (selected + flat.length - 1) % flat.length; liveFocus(); } }
 
     property bool pendingReverseOpen: false
 
@@ -148,34 +200,50 @@ Item {
         clientsProc.running = true;
     }
 
-    // doFocus=false: Escape semantics — close without focusing.
+    // The window that was focused when the switcher opened. Escape returns to it.
+    property string originAddr: ""
+    property int originGroupIdx: 0
+
+    // hl.dsp.focus silently ignores hidden group tabs (Hyprland ≥0.56), so
+    // switch the group's active tab first. Two dispatches: the payload is
+    // evaluated as a single Lua expression. Focus does not raise floating windows.
+    function focusWindow(addr, groupIdx) {
+        if (groupIdx)
+            Hyprland.dispatch('hl.dsp.group.active({ window = "address:' + addr + '", index = ' + groupIdx + ' })');
+        Hyprland.dispatch('hl.dsp.focus({ window = "address:' + addr + '" })');
+        Hyprland.dispatch('hl.dsp.window.bring_to_top()');
+    }
+
+    // Focus follows the selection while the modifier is held.
+    function liveFocus() {
+        if (open && flat.length)
+            focusWindow(flat[selected].addr, flat[selected].groupIdx);
+    }
+
+    // doFocus=false: Escape semantics — return to the window that was focused
+    // when the switcher opened.
     function close(doFocus) {
         if (!open) return;
         const entry = (doFocus && flat.length) ? flat[selected] : null;
         open = false;
-        if (!entry) return;
-        pendingAddr = entry.addr;
-        pendingGroupIdx = entry.groupIdx;
+        pendingAddr = entry ? entry.addr : originAddr;
+        pendingGroupIdx = entry ? entry.groupIdx : originGroupIdx;
+        if (!pendingAddr) return;
         focusTimer.start();
     }
 
     property string pendingAddr: ""
     property int pendingGroupIdx: 0
 
-    // Dispatch after the overlay surface is gone: tearing down the exclusive
-    // keyboard grab makes Hyprland restore focus to the previously active
-    // window, which re-raises its group tab and undoes a same-group switch.
-    // hl.dsp.focus silently ignores hidden group tabs (Hyprland ≥0.56), so
-    // switch the group's active tab first. Two dispatches: the payload is
-    // evaluated as a single Lua expression. Focus does not raise floating windows.
+    // Dispatch after the overlay surface is gone, so its teardown cannot move
+    // focus afterwards. The chosen window is usually focused already (live
+    // focus), which fires no focus change: record it in the history here.
     Timer {
         id: focusTimer
         interval: 100
         onTriggered: {
-            if (root.pendingGroupIdx)
-                Hyprland.dispatch('hl.dsp.group.active({ window = "address:' + root.pendingAddr + '", index = ' + root.pendingGroupIdx + ' })');
-            Hyprland.dispatch('hl.dsp.focus({ window = "address:' + root.pendingAddr + '" })');
-            Hyprland.dispatch('hl.dsp.window.bring_to_top()');
+            root.focusWindow(root.pendingAddr, root.pendingGroupIdx);
+            root.history = Logic.noteFocus(root.history, root.pendingAddr);
         }
     }
 
@@ -268,22 +336,12 @@ Item {
         return resolveIcon("application-x-executable");
     }
 
-    // One shortcut serves ALT+Tab and SUPER+Tab. While the overlay is open the
-    // exclusive keyboard grab keeps the compositor bind from refiring, but stay
-    // defensive in case an event slips through before the grant.
+    // One shortcut serves ALT+Tab and SUPER+Tab, outside the submap to open
+    // and inside it to advance.
     GlobalShortcut {
         appid: "omarchy-alttab"
         name: "next"
-        onPressed: {
-            if (root.open) {
-                // The compositor bind refired: the modifier is necessarily held.
-                root.sawKeyEvent = true;
-                root.modsHeld = true;
-                root.next();
-            } else {
-                root.requestOpen();
-            }
-        }
+        onPressed: root.open ? root.next() : root.requestOpen()
     }
 
     // Mirrors "next" for the reverse direction (e.g. ALT+SHIFT+TAB); a cold
@@ -291,16 +349,13 @@ Item {
     GlobalShortcut {
         appid: "omarchy-alttab"
         name: "prev"
-        onPressed: {
-            if (root.open) {
-                root.sawKeyEvent = true;
-                root.modsHeld = true;
-                root.prev();
-            } else {
-                root.requestOpen(true);
-            }
-        }
+        onPressed: root.open ? root.prev() : root.requestOpen(true)
     }
+
+    // Keys of the "alttab" submap, bound only while the switcher is open.
+    GlobalShortcut { appid: "omarchy-alttab"; name: "commit"; onPressed: root.close(true) }
+    GlobalShortcut { appid: "omarchy-alttab"; name: "toggle-previews"; onPressed: if (root.open) root.togglePreviews() }
+    GlobalShortcut { appid: "omarchy-alttab"; name: "close-selected"; onPressed: if (root.open) root.closeSelected() }
 
     // The Lua binding snippet tags its binds with the "Alt-Tab switcher"
     // description; its absence means the user enabled the plugin without
@@ -340,26 +395,31 @@ Item {
             onStreamFinished: {
                 let clients = [];
                 try { clients = JSON.parse(text); } catch (e) { return; }
+                // The window Hyprland has focused is the most recent one.
+                const origin = clients.find(c => c.focusHistoryID === 0);
+                if (origin) root.history = Logic.noteFocus(root.history, origin.address);
+                clients = Logic.applyHistory(clients, root.history);
                 const activeWs = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1;
                 const groups = Logic.groupClients(clients, activeWs);
                 const flat = Logic.flatten(groups);
                 if (!flat.length) return;
                 root.fitThumbs(flat, groups.length);
                 root.refreshModules(flat);
+                root.originAddr = origin ? origin.address : "";
+                root.originGroupIdx = origin && origin.grouped
+                    ? origin.grouped.indexOf(origin.address) + 1 : 0;
                 root.groups = groups;
                 root.flat = flat;
                 root.selected = root.pendingReverseOpen ? flat.length - 1 : Logic.initialSelection(flat);
                 root.pendingReverseOpen = false;
-                root.heldKeys = {};
-                root.sawKeyEvent = false;
-                root.modsHeld = false;
                 root.open = true;
+                root.liveFocus();
             }
         }
     }
 
     LazyLoader {
-        active: root.open
+        active: root.open && root.shown
 
         PanelWindow {
             id: panel
@@ -371,52 +431,12 @@ Item {
             property point initialPos: Qt.point(-1, -1)
 
             WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             WlrLayershell.namespace: "omarchy-alttab"
             exclusionMode: ExclusionMode.Ignore
             color: "transparent"
             implicitWidth: content.implicitWidth
             implicitHeight: content.implicitHeight
-
-            // Always focus the selection; only Escape cancels. Cancelling
-            // when the pointer had left the overlay meant any cursor movement
-            // (or a focus warp) silently dropped the chosen window.
-            function activate() {
-                root.close(true);
-            }
-
-            // Fast-tap race: modifier released before the exclusive keyboard
-            // grant delivers any event. While no event has been seen, ask the
-            // compositor for the real modifier state (the GDK query of the
-            // Rust version); once an event arrives the key handlers own the
-            // closing decision.
-            Timer {
-                id: noKeyTimer
-                interval: 150
-                repeat: true
-                running: true
-                onTriggered: {
-                    if (root.sawKeyEvent) {
-                        if (root.heldEmpty() && !root.modsHeld) panel.activate();
-                        else stop();
-                    } else {
-                        modCheck.running = true;
-                    }
-                }
-            }
-
-            Process {
-                id: modCheck
-                command: ["hyprctl", "eval",
-                    'error(tostring(hl.is_key_down("Alt_L") or hl.is_key_down("Alt_R") or hl.is_key_down("Super_L") or hl.is_key_down("Super_R")))']
-                stdout: StdioCollector {
-                    onStreamFinished: {
-                        if (!root.open || root.sawKeyEvent) return;
-                        if (!text.trim().endsWith("true"))
-                            panel.activate();
-                    }
-                }
-            }
 
             Rectangle {
                 id: content
@@ -427,8 +447,6 @@ Item {
                 radius: 16
                 implicitWidth: column.implicitWidth + 40
                 implicitHeight: column.implicitHeight + 40
-
-                focus: true
 
                 MouseArea {
                     anchors.fill: parent
@@ -443,49 +461,6 @@ Item {
                         if (Math.abs(mouse.x - panel.initialPos.x) + Math.abs(mouse.y - panel.initialPos.y) > 3)
                             panel.hoverArmed = true;
                     }
-                }
-
-                Keys.onPressed: (event) => {
-                    root.sawKeyEvent = true;
-                    root.modsHeld = !!(event.modifiers & (Qt.AltModifier | Qt.MetaModifier));
-                    if (event.key === Qt.Key_Escape) {
-                        root.close(false);
-                        event.accepted = true;
-                        return;
-                    }
-                    if (!root.isModifierKey(event.key))
-                        root.heldKeys[event.key] = true;
-                    if (event.key === Qt.Key_Tab || event.key === Qt.Key_Right) {
-                        root.next();
-                        event.accepted = true;
-                    } else if (event.key === Qt.Key_Backtab || event.key === Qt.Key_Left) {
-                        root.prev();
-                        event.accepted = true;
-                    } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                        panel.activate();
-                        event.accepted = true;
-                    } else if (event.key === Qt.Key_P && !event.isAutoRepeat) {
-                        root.togglePreviews();
-                        event.accepted = true;
-                    } else if (event.key === Qt.Key_Q && !event.isAutoRepeat) {
-                        root.closeSelected();
-                        event.accepted = true;
-                    }
-                }
-
-                Keys.onReleased: (event) => {
-                    root.sawKeyEvent = true;
-                    delete root.heldKeys[event.key];
-                    // event.modifiers may still include the modifier being
-                    // released — subtract it explicitly, like the Rust port.
-                    const altReleasing = event.key === Qt.Key_Alt;
-                    const superReleasing = event.key === Qt.Key_Meta
-                        || event.key === Qt.Key_Super_L || event.key === Qt.Key_Super_R;
-                    const altHeld = (event.modifiers & Qt.AltModifier) && !altReleasing;
-                    const superHeld = (event.modifiers & Qt.MetaModifier) && !superReleasing;
-                    root.modsHeld = !!(altHeld || superHeld);
-                    if (!root.modsHeld && (altReleasing || superReleasing || root.heldEmpty()))
-                        panel.activate();
                 }
 
                 Column {
@@ -686,7 +661,7 @@ Item {
                                                 TapHandler {
                                                     onTapped: {
                                                         root.selected = frame.modelData.flatIdx;
-                                                        panel.activate();
+                                                        root.close(true);
                                                     }
                                                 }
                                             }

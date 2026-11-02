@@ -79,14 +79,24 @@ Omarchy only offers a settings UI (manifest `schema`) to bar widgets, so a
 ## Behavior
 
 - ALT+Tab / SUPER+Tab: opens the overlay, pressing again advances the selection.
+- Focus follows the selection while ALT/SUPER is held, so the window itself
+  shows, not only its preview. The overlay appears after 350 ms; a quick tap
+  switches to the previous window without showing it.
 - Tab/Right → next, Shift+Tab/Left → previous, Enter → activate,
-  Escape → close without focusing, releasing ALT/SUPER → activate,
-  P → toggle window previews / app icons, Q → close the selected window.
+  Escape → back to the window focused when the overlay opened, releasing
+  ALT/SUPER → activate, P → toggle window previews / app icons, Q → close the
+  selected window. Other keys are swallowed while the overlay is open.
 - ALT/SUPER+Shift+Tab: opens the overlay on the last window of the list,
   pressing again steps backward.
+- The overlay takes no keyboard focus (Hyprland does not move window focus
+  while a layer holds the keyboard). Its keys are binds of the `alttab`
+  submap in `alttab-bindings.lua`, active while it is open; Escape resets the
+  submap from Hyprland itself, so it still works if the shell dies mid-switch.
 - The overlay stays open as long as ALT or SUPER is physically held
-  (checked via `hl.is_key_down` when no keyboard event reaches the
-  overlay — the case of Tab released before the keyboard is acquired).
+  (release binds in the submap, and `hl.is_key_down` for a release before the
+  submap is active).
+- Recency comes from the plugin's own focus history: windows passed while
+  browsing do not count as used, so ALT+Tab twice returns to where you were.
 - Mouse: hover selects (once the pointer moves), click activates. Releasing
   ALT/SUPER always focuses the selection, wherever the pointer is.
 - Each window shows a still preview (one screencopy frame per opening, never

@@ -16,7 +16,8 @@ python/           Legacy prototype
 
 ## Features
 
-- 🪟 **Visual switcher** on the layer-shell `Overlay` layer with exclusive keyboard focus
+- 🪟 **Visual switcher** on the layer-shell `Overlay` layer; focus follows the selection while
+  ALT/SUPER is held, and the overlay appears only after 350 ms, so a quick tap switches without it
 - 🗂️ **Grouped by workspace** (active first), sorted by recency (`focusHistoryID`), pinned windows and the `special:qconsole` workspace excluded
 - 🖼️ **Window previews** — a still frame of each window (toplevel screencopy), with its app icon
   as a corner badge and its title underneath, so several windows of the same app are easy to tell
@@ -25,11 +26,11 @@ python/           Legacy prototype
 - 🔴 **Notification badges** — a red dot on windows whose app sent a notification since you last
   looked at it (optional module, see [Configuration](#configuration))
 - 🎨 **Theme-aware** — follows the active Omarchy theme automatically
-- ⌨️ Tab/Right → next, Shift+Tab/Left → previous, Return → activate, Escape → cancel, P → toggle previews, Q → close window,
-  releasing ALT/SUPER → activate; hover selects, click activates. ALT/SUPER+Shift+Tab opens on the
-  last window of the list
-- 🫀 Stays open while ALT or SUPER is physically held (verified via `hl.is_key_down` when no
-  keyboard event reaches the overlay)
+- ⌨️ Tab/Right → next, Shift+Tab/Left → previous, Return → activate, Escape → back to the window
+  you started from, P → toggle previews, Q → close window, releasing ALT/SUPER → activate; hover
+  selects, click activates. ALT/SUPER+Shift+Tab opens on the last window of the list
+- 🫀 Stays open while ALT or SUPER is physically held (release binds in a Hyprland submap, and
+  `hl.is_key_down` for a release before the submap is active)
 
 ## Install (Omarchy plugin)
 
@@ -44,18 +45,12 @@ ln -sfn "$PWD/hyprland-alttab" ~/.config/omarchy/plugins/vbrosseau.alttab
 omarchy plugin enable vbrosseau.alttab
 ```
 
-Then bind it — in `~/.config/hypr/bindings.lua` (or `customisation.lua`):
+Then bind it — include the plugin's bindings from `~/.config/hypr/bindings.lua` (or
+`customisation.lua`). Besides the shortcuts, the file defines the `alttab` submap that holds the
+overlay's keys (Escape, Return, arrows, P, Q, release to activate):
 
 ```lua
-hl.unbind("ALT + TAB")
-o.bind("ALT + TAB", nil, hl.dsp.global("omarchy-alttab:next"), { repeating = true })
-hl.unbind("SUPER + TAB")
-o.bind("SUPER + TAB", nil, hl.dsp.global("omarchy-alttab:next"), { repeating = true })
-hl.unbind("ALT + SHIFT + TAB")
-o.bind("ALT + SHIFT + TAB", nil, hl.dsp.global("omarchy-alttab:prev"), { repeating = true })
-hl.unbind("SUPER + SHIFT + TAB")
-o.bind("SUPER + SHIFT + TAB", nil, hl.dsp.global("omarchy-alttab:prev"), { repeating = true })
-hl.layer_rule({ match = { namespace = "omarchy-alttab" }, no_anim = true })
+dofile(os.getenv("HOME") .. "/.config/omarchy/plugins/vbrosseau.alttab/omarchy-plugin/alttab-bindings.lua")
 ```
 
 Finally `omarchy restart shell`, then `hyprctl reload` and check `hyprctl configerrors`.

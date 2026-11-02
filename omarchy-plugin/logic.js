@@ -136,6 +136,33 @@ function removeEntry(groups, addr) {
     return out;
 }
 
+// Hyprland addresses as hyprctl ("0x55…") and Quickshell may report them.
+function addressKey(address) {
+    return String(address || "").replace(/^0x/i, "").toLowerCase();
+}
+
+// Put an address first in the switcher's own focus history.
+function noteFocus(history, address) {
+    const key = addressKey(address);
+    if (!key) return history;
+    return [key].concat(history.filter(k => k !== key));
+}
+
+// Rank clients by the switcher's own focus history instead of Hyprland's.
+// Live focus while browsing would otherwise push every passed window to the
+// top of Hyprland's history. Windows missing from the history keep Hyprland's
+// relative order, after the known ones; an empty history changes nothing.
+function applyHistory(clients, history) {
+    if (!history.length) return clients;
+    const rank = new Map(history.map((key, index) => [key, index]));
+    return clients.map(c => {
+        const known = rank.get(addressKey(c.address));
+        const focusHistoryID = known !== undefined ? known
+            : c.focusHistoryID < 0 ? -1 : history.length + c.focusHistoryID;
+        return Object.assign({}, c, { focusHistoryID });
+    });
+}
+
 // Second-most-recently-used window: smallest fhid > 0, fallback 0.
 function initialSelection(flat) {
     let best = -1, bestFhid = Infinity;
