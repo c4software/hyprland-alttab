@@ -27,7 +27,7 @@ python/           Legacy prototype
 - 🔴 **Notification badges** — a red dot on windows whose app sent a notification since you last
   looked at it (optional module, see [Configuration](#configuration))
 - 🎨 **Theme-aware** — follows the active Omarchy theme automatically
-- ⌨️ Tab/Right → next, Shift+Tab/Left → previous, Return → activate, Escape → cancel, P → toggle previews, Q → close window,
+- ⌨️ Tab/Right → next, Shift+Tab/Left → previous, Return → activate, Escape → cancel, P → toggle previews, F → highlight on screen, Q → close window,
   releasing ALT/SUPER → activate; hover selects, click activates. ALT/SUPER+Shift+Tab opens on the
   last window of the list
 - 🫀 Stays open while ALT or SUPER is physically held (verified via `hl.is_key_down` when no
@@ -78,6 +78,16 @@ directly (applied live, no shell restart needed):
 ```
 
 Set `"previews": true` or delete the file to turn them back on.
+
+Press `F` while the overlay is open to highlight the selected window on screen: an accent border,
+the other windows faded, and the workspace shown follows the selection (without moving focus;
+Escape returns to the starting workspace). Off by default, saved to the same file, with the
+opacity of the faded windows in percent (10–100, default 80) and the fade duration in milliseconds
+(0–2000, default 250, 0 disables the animation):
+
+```json
+{ "highlight": true, "fadeOpacity": 80, "fadeDuration": 250 }
+```
 
 > Why a separate file? Omarchy's settings UI (the `schema` declared in a plugin manifest) is
 > only available to bar widgets; `service` plugins like this one get no settings from the shell.

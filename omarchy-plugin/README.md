@@ -63,6 +63,17 @@ Optional `~/.config/omarchy/alttab.json`, picked up live:
 - `previews` (default `true`): `false` shows app icons instead of window
   previews; `true` (or deleting the file) turns them back on. Pressing `P`
   while the overlay is open toggles it and saves the choice to this file.
+- `highlight` (default `false`): while the overlay is open, the selected
+  window gets an accent border, the other listed windows are faded, and the
+  workspace shown follows the selection, all through Hyprland window rules
+  and tags, without moving focus. Pressing `F` toggles it and saves the
+  choice to this file. Only workspaces of the monitor the switcher opened on
+  are followed; special workspaces and hidden group tabs show no highlight. If
+  the shell dies mid-switch, the shown workspace is not restored.
+- `fadeOpacity` (default `80`): opacity of the faded windows, in percent
+  (10–100).
+- `fadeDuration` (default `250`): duration of the fade, in milliseconds
+  (0–2000, `0` disables the animation).
 - `modules`: optional features living in [`modules/`](modules), each on or
   off by id; a disabled module is not loaded at all.
   - `notificationBadges` (default `true`): a red dot on windows whose app sent a
@@ -81,7 +92,8 @@ Omarchy only offers a settings UI (manifest `schema`) to bar widgets, so a
 - ALT+Tab / SUPER+Tab: opens the overlay, pressing again advances the selection.
 - Tab/Right → next, Shift+Tab/Left → previous, Enter → activate,
   Escape → close without focusing, releasing ALT/SUPER → activate,
-  P → toggle window previews / app icons, Q → close the selected window.
+  P → toggle window previews / app icons, F → toggle the window highlight,
+  Q → close the selected window.
 - ALT/SUPER+Shift+Tab: opens the overlay on the last window of the list,
   pressing again steps backward.
 - The overlay stays open as long as ALT or SUPER is physically held

@@ -13,10 +13,192 @@ Item {
     property var shell: null
 
     property bool open: false
-    onOpenChanged: Hyprland.dispatch('hl.dsp.submap("' + (open ? "alttab" : "reset") + '")')
+    onOpenChanged: {
+        Hyprland.dispatch('hl.dsp.submap("' + (open ? "alttab" : "reset") + '")');
+        root.followReady = false;
+        if (open) followTimer.restart();
+        else fadeRestoreTimer.restart();
+    }
     property var groups: []
     property var flat: []
     property int selected: 0
+
+    // Selected window tagged "alttab-selected", the others "alttab-dim"; window rules style them.
+    property bool highlight: false
+    property int fadeOpacity: 80
+    property int fadeDuration: 250
+    onHighlightChanged: {
+        if (open && highlight) prepareHighlight();
+        updateHighlight();
+    }
+    property string highlightedAddr: ""
+    property var dimmedAddrs: ({})
+    readonly property string highlightTarget: open && highlight && flat[selected] ? flat[selected].addr : ""
+    onHighlightTargetChanged: updateHighlight()
+    onFlatChanged: updateHighlight()
+
+    // Runs Lua statements in one dispatch, in order; dispatch expects a dispatcher back.
+    function hyprBatch(statements) {
+        const body = statements.filter(st => st).join(" ");
+        if (body) Hyprland.dispatch("(function() " + body + " return hl.dsp.no_op() end)()");
+    }
+
+    function tagStatement(addr, tag) {
+        if (!/^0x[0-9a-fA-F]+$/.test(String(addr))) return "";
+        return 'hl.dispatch(hl.dsp.window.tag({ window = "address:' + addr + '", tag = "' + tag + '" }))';
+    }
+
+    property int originWs: -1
+    property int originMon: -1
+    property int shownWs: -1
+    property string originAddr: ""
+
+    // Switching workspace before the overlay holds the keyboard would move window focus.
+    property bool followReady: false
+
+    Timer {
+        id: followTimer
+        interval: 150
+        onTriggered: {
+            root.followReady = root.open;
+            root.followWorkspace();
+        }
+    }
+
+    function followWorkspace() {
+        const entry = open && followReady ? flat[selected] : null;
+        if (!entry || entry.ws <= 0 || entry.ws === shownWs || entry.mon !== originMon) return;
+        Hyprland.dispatch('hl.dsp.focus({ workspace = "' + entry.ws + '" })');
+        shownWs = entry.ws;
+    }
+
+    function updateHighlight() {
+        const batch = [];
+        const moved = highlightTarget !== highlightedAddr;
+        if (moved) {
+            if (highlightedAddr) batch.push(tagStatement(highlightedAddr, "-alttab-selected"));
+            if (highlightTarget) batch.push(tagStatement(highlightTarget, "+alttab-selected"));
+            highlightedAddr = highlightTarget;
+        }
+        const wanted = {};
+        if (open && highlight)
+            for (const e of flat)
+                if (e.addr !== highlightTarget) wanted[e.addr] = true;
+        for (const a in dimmedAddrs)
+            if (!wanted[a]) batch.push(tagStatement(a, "-alttab-dim"));
+        for (const a in wanted)
+            if (!dimmedAddrs[a]) batch.push(tagStatement(a, "+alttab-dim"));
+        dimmedAddrs = wanted;
+        hyprBatch(batch);
+        if (moved) followWorkspace();
+    }
+
+    readonly property string accentHex: {
+        const hex = String(Color.accent).replace("#", "").slice(-6);
+        return /^[0-9a-fA-F]{6}$/.test(hex) ? hex : "ffffff";
+    }
+    // Rules are redefined on each opening: a dispatch sent while the shell starts is lost.
+    function prepareHighlight() {
+        defineHighlightRule();
+        setFadeSwitch(true);
+    }
+
+    function defineHighlightRule() {
+        const color = "rgb(" + accentHex + ")";
+        const alpha = (fadeOpacity / 100).toFixed(2) + " override";
+        hyprBatch([
+            'hl.window_rule({ name = "alttab-selected", match = { tag = "alttab-selected" }, border_color = "' + color + ' ' + color + '" })',
+            'hl.window_rule({ name = "alttab-dim", match = { tag = "alttab-dim" }, opacity = "' + alpha + ' ' + alpha + '" })']);
+    }
+
+    Connections {
+        target: Hyprland
+        function onRawEvent(event) {
+            if (event.name !== "configreloaded") return;
+            // The reload reapplied the user's fadeSwitch.
+            if (root.fadeSwitchOn) fadeStateFile.setText("");
+            root.fadeSwitchOn = false;
+            root.fadeSwitchKnown = false;
+            fadeSwitchRead.running = true;
+        }
+    }
+
+    // Tags left by a shell that died mid-switch.
+    Process {
+        id: staleTagsProc
+        command: ["hyprctl", "-j", "clients"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let clients = [];
+                try { clients = JSON.parse(text); } catch (e) { return; }
+                const batch = [];
+                for (const c of clients)
+                    for (const t of c.tags || [])
+                        if (t === "alttab-selected" || t === "alttab-dim") batch.push(root.tagStatement(c.address, "-" + t));
+                root.hyprBatch(batch);
+            }
+        }
+    }
+
+    // fadeSwitch animates the opacity change; only enabled when the user has it off.
+    property bool fadeSwitchKnown: false
+    property bool fadeSwitchUserOn: false
+    property bool fadeSwitchOn: false
+
+    // Exists while the plugin has fadeSwitch on, so a restart after a crash turns it back off.
+    FileView {
+        id: fadeStateFile
+        path: Quickshell.env("XDG_RUNTIME_DIR") + "/omarchy-alttab-fadeswitch"
+        printErrors: false
+        onLoaded: {
+            if (text().trim() === "") {
+                fadeSwitchRead.running = true;
+                return;
+            }
+            root.fadeSwitchKnown = true;
+            root.fadeSwitchUserOn = false;
+            root.fadeSwitchOn = true;
+            root.setFadeSwitch(false);
+        }
+        onLoadFailed: fadeSwitchRead.running = true
+    }
+
+    Process {
+        id: fadeSwitchRead
+        command: ["hyprctl", "animations", "-j"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const a = JSON.parse(text)[0].find(x => x.name === "fadeSwitch");
+                    root.fadeSwitchUserOn = !!(a && a.enabled);
+                    root.fadeSwitchKnown = true;
+                } catch (e) {}
+                if (root.open && root.highlight) root.setFadeSwitch(true);
+            }
+        }
+    }
+
+    function setFadeSwitch(on) {
+        if (on) {
+            if (fadeSwitchOn || !fadeSwitchKnown || fadeSwitchUserOn || fadeDuration <= 0) return;
+            fadeStateFile.setText("1");
+            fadeSwitchOn = true;
+            hyprBatch(['hl.animation({ leaf = "fadeSwitch", enabled = true, speed = ' + (fadeDuration / 100).toFixed(2) + ', bezier = "quick" })']);
+        } else {
+            if (!fadeSwitchOn) return;
+            fadeStateFile.setText("");
+            fadeSwitchOn = false;
+            hyprBatch(['hl.animation({ leaf = "fadeSwitch", enabled = false })']);
+        }
+    }
+
+    Timer {
+        id: fadeRestoreTimer
+        interval: root.fadeDuration + 150
+        onTriggered: if (!root.open) root.setFadeSwitch(false)
+    }
+
+    Component.onCompleted: staleTagsProc.running = true
 
     // Window previews: tile height for the current opening (shrunk so the row
     // fits the focused monitor) and Hyprland address -> Wayland toplevel handle
@@ -32,16 +214,9 @@ Item {
         path: Quickshell.env("HOME") + "/.config/omarchy/alttab.json"
         watchChanges: true
         printErrors: false
-        onLoaded: {
-            const config = Logic.parseConfig(text());
-            root.previews = config.previews;
-            root.modules = config.modules;
-        }
+        onLoaded: root.applyConfig(Logic.parseConfig(text()))
         onFileChanged: reload()
-        onLoadFailed: {
-            root.previews = true;
-            root.modules = Logic.defaultModules();
-        }
+        onLoadFailed: root.applyConfig(Logic.parseConfig(""))
     }
 
     // Omarchy's default coding agent and default terminal, for the icons of
@@ -125,15 +300,33 @@ Item {
         if (root.previews) root.refreshToplevels();
     }
 
-    // Switch between previews and icons, persisted to alttab.json.
-    function togglePreviews() {
+    function applyConfig(config) {
+        root.previews = config.previews;
+        root.highlight = config.highlight;
+        root.fadeOpacity = config.fadeOpacity;
+        root.fadeDuration = config.fadeDuration;
+        root.modules = config.modules;
+    }
+
+    // Write one key to alttab.json, keeping the others.
+    function saveConfig(key, value) {
         let data = {};
         try { data = JSON.parse(configFile.text()) || {}; } catch (e) {}
-        root.previews = !root.previews;
-        data.previews = root.previews;
+        data[key] = value;
         configFile.setText(JSON.stringify(data, null, 2) + "\n");
+    }
+
+    // Switch between previews and icons, persisted to alttab.json.
+    function togglePreviews() {
+        root.previews = !root.previews;
+        saveConfig("previews", root.previews);
         if (root.previews) Hyprland.refreshToplevels();
         root.fitThumbs(root.flat, root.groups.length);
+    }
+
+    function toggleHighlight() {
+        root.highlight = !root.highlight;
+        saveConfig("highlight", root.highlight);
     }
 
     // Close the selected window and drop it from the list; the overlay stays open.
@@ -141,6 +334,7 @@ Item {
         const entry = flat[selected];
         if (!entry) return;
         Hyprland.dispatch('hl.dsp.window.close({ window = "address:' + entry.addr + '" })');
+        if (entry.addr === root.originAddr) root.originAddr = "";
         const groups = Logic.removeEntry(root.groups, entry.addr);
         const remaining = Logic.flatten(groups);
         if (!remaining.length) {
@@ -186,6 +380,9 @@ Item {
 
     function requestOpen(reverse) {
         root.pendingReverseOpen = !!reverse;
+        fadeRestoreTimer.stop();
+        if (!root.fadeSwitchKnown && !fadeSwitchRead.running) fadeSwitchRead.running = true;
+        if (root.highlight) root.prepareHighlight();
         if (root.previews) Hyprland.refreshToplevels();
         if (root.shell && root.shell.appLibrary) root.shell.appLibrary.refreshIcons();
         clientsProc.running = true;
@@ -196,9 +393,9 @@ Item {
         if (!open) return;
         const entry = (doFocus && flat.length) ? flat[selected] : null;
         open = false;
-        if (!entry) return;
-        pendingAddr = entry.addr;
-        pendingGroupIdx = entry.groupIdx;
+        if (!entry && shownWs === originWs) return;
+        pendingAddr = entry ? entry.addr : originAddr;
+        pendingGroupIdx = entry ? entry.groupIdx : 0;
         focusTimer.start();
     }
 
@@ -215,6 +412,10 @@ Item {
         id: focusTimer
         interval: 100
         onTriggered: {
+            if (!root.pendingAddr) {
+                Hyprland.dispatch('hl.dsp.focus({ workspace = "' + root.originWs + '" })');
+                return;
+            }
             if (root.pendingGroupIdx)
                 Hyprland.dispatch('hl.dsp.group.active({ window = "address:' + root.pendingAddr + '", index = ' + root.pendingGroupIdx + ' })');
             Hyprland.dispatch('hl.dsp.focus({ window = "address:' + root.pendingAddr + '" })');
@@ -406,7 +607,10 @@ Item {
                 const activeWs = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1;
                 const groups = Logic.groupClients(clients, activeWs);
                 const flat = Logic.flatten(groups);
-                if (!flat.length) return;
+                if (!flat.length) {
+                    fadeRestoreTimer.restart();
+                    return;
+                }
                 root.readAgentPrograms(clients);
                 root.fitThumbs(flat, groups.length);
                 root.refreshModules(flat);
@@ -417,6 +621,11 @@ Item {
                 root.heldKeys = {};
                 root.sawKeyEvent = false;
                 root.modsHeld = false;
+                const origin = clients.find(c => c.focusHistoryID === 0);
+                root.originAddr = origin ? origin.address : "";
+                root.originWs = activeWs;
+                root.originMon = Hyprland.focusedMonitor ? Hyprland.focusedMonitor.id : -1;
+                root.shownWs = activeWs;
                 root.open = true;
             }
         }
@@ -530,6 +739,9 @@ Item {
                         event.accepted = true;
                     } else if (event.key === Qt.Key_P && !event.isAutoRepeat) {
                         root.togglePreviews();
+                        event.accepted = true;
+                    } else if (event.key === Qt.Key_F && !event.isAutoRepeat) {
+                        root.toggleHighlight();
                         event.accepted = true;
                     } else if (event.key === Qt.Key_Q && !event.isAutoRepeat) {
                         root.closeSelected();
