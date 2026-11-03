@@ -17,7 +17,7 @@ python/           Legacy prototype
 ## Features
 
 - 🪟 **Visual switcher** on the layer-shell `Overlay` layer with exclusive keyboard focus
-- 🗂️ **Grouped by workspace** (active first), sorted by recency (`focusHistoryID`), pinned windows and the `special:qconsole` workspace excluded
+- 🗂️ **Grouped by workspace** (active first), sorted by recency (`focusHistoryID`), pinned windows and special workspaces (`special:*`) excluded
 - 🖼️ **Window previews** — a still frame of each window (toplevel screencopy), with its app icon
   as a corner badge and its title underneath, so several windows of the same app are easy to tell
   apart. Icons are resolved from `.desktop` files (id variants, `StartupWMClass`, Omarchy terminal

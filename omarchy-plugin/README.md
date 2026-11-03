@@ -68,7 +68,7 @@ Optional `~/.config/omarchy/alttab.json`, picked up live:
   workspace shown follows the selection, all through Hyprland window rules
   and tags, without moving focus. Pressing `F` toggles it and saves the
   choice to this file. Only workspaces of the monitor the switcher opened on
-  are followed; special workspaces and hidden group tabs show no highlight. If
+  are followed; hidden group tabs show no highlight. If
   the shell dies mid-switch, the shown workspace is not restored.
 - `fadeOpacity` (default `80`): opacity of the faded windows, in percent
   (10–100).
@@ -105,7 +105,7 @@ Omarchy only offers a settings UI (manifest `schema`) to bar widgets, so a
   streamed), sized to its aspect ratio and shrunk to fit the monitor; the app
   icon is shown instead when capture is unavailable or previews are disabled.
 - Windows grouped by workspace (active first), sorted by recency
-  (focusHistoryID), pinned windows and the `special:qconsole` workspace
-  excluded.
+  (focusHistoryID), pinned windows and special workspaces (`special:*`,
+  scratchpad, Quake console) excluded.
 - Colors: the shell's `Color` singleton (`qs.Commons`) — follows the Omarchy
   theme automatically.
