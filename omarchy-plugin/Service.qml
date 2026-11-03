@@ -67,16 +67,24 @@ Item {
         onLoadFailed: root.defaultTerminal = ""
     }
 
-    // Parent pid -> child programs, read on each opening: an agent window's
-    // terminal process runs the agent.
+    // Parent pid -> child programs of agent windows' terminals, read on each
+    // opening: the terminal process runs the agent.
     property var childPrograms: ({})
 
     Process {
         id: childProc
-        command: ["ps", "-eo", "ppid=,args="]
         stdout: StdioCollector {
             onStreamFinished: root.childPrograms = Logic.childPrograms(text)
         }
+    }
+
+    // Only the children of agent windows' terminals are read.
+    function readAgentPrograms(clients) {
+        const pids = clients.filter(c => c.class === "org.omarchy.agent" && c.pid > 0).map(c => c.pid);
+        root.childPrograms = ({});
+        if (!pids.length) return;
+        childProc.command = ["ps", "--ppid", pids.join(","), "-o", "ppid=,args="];
+        childProc.running = true;
     }
 
     // Optional modules, each loaded only when enabled in alttab.json. A module
@@ -180,7 +188,6 @@ Item {
         root.pendingReverseOpen = !!reverse;
         if (root.previews) Hyprland.refreshToplevels();
         if (root.shell && root.shell.appLibrary) root.shell.appLibrary.refreshIcons();
-        childProc.running = true;
         clientsProc.running = true;
     }
 
@@ -278,6 +285,7 @@ Item {
         // omarchy-agent gives every agent the same class.
         if (cls === "org.omarchy.agent") {
             for (const name of [Logic.windowProgram(root.childPrograms, pid), root.defaultAgent]) {
+                if (!name || name.includes("/")) continue;
                 const e = Logic.programEntry(name, entries);
                 const p = e ? resolveIcon(e.icon) : resolveIcon(name);
                 if (p) return p;
@@ -399,6 +407,7 @@ Item {
                 const groups = Logic.groupClients(clients, activeWs);
                 const flat = Logic.flatten(groups);
                 if (!flat.length) return;
+                root.readAgentPrograms(clients);
                 root.fitThumbs(flat, groups.length);
                 root.refreshModules(flat);
                 root.groups = groups;

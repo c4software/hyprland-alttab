@@ -154,16 +154,16 @@ function terminalAppEntry(cls, entries) {
 }
 
 // Programs that run a script: the script names the program.
-const INTERPRETERS = ["node", "bun", "deno", "python", "python3"];
+const INTERPRETER = /^(node|bun|deno|python[0-9.]*)$/;
 
-// `ps -eo ppid=,args=` output -> { parent pid: [child program, ...] }.
+// `ps -o ppid=,args=` output -> { parent pid: [child program, ...] }.
 function childPrograms(psText) {
     const map = {};
     for (const line of String(psText || "").split("\n")) {
         const words = line.trim().split(/\s+/);
         if (words.length < 2 || !/^\d+$/.test(words[0])) continue;
         let program = baseName(words[1]);
-        if (INTERPRETERS.indexOf(program) >= 0) {
+        if (INTERPRETER.test(program)) {
             const script = words.slice(2).find(w => w.indexOf("-") !== 0);
             if (script) program = baseName(script).replace(/\.(m?js|cjs|py)$/, "");
         }
