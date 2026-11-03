@@ -4,6 +4,15 @@ Alt+Tab switcher in QML, hosted as a `service` plugin inside the
 `omarchy-shell` (Quickshell) process: a single persistent process, no daemon,
 no socket, no autostart to manage.
 
+## Files
+
+- `Service.qml` — entry point: state, settings, shortcuts, window list, open/close
+- `Overlay.qml` — the overlay window: keyboard, tiles, hover
+- `IconResolver.qml` — window icons (desktop entries, web apps, terminal apps, agents)
+- `Highlight.qml` — on-screen highlight of the selection (`highlight` setting)
+- `logic.js` — pure helpers (settings, grouping, matching)
+- `modules/` — optional features
+
 ## Requirements
 
 - Omarchy with the Quickshell shell (`omarchy-shell`)
