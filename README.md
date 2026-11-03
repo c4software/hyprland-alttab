@@ -20,8 +20,10 @@ python/           Legacy prototype
 - 🗂️ **Grouped by workspace** (active first), sorted by recency (`focusHistoryID`), pinned windows and the `special:qconsole` workspace excluded
 - 🖼️ **Window previews** — a still frame of each window (toplevel screencopy), with its app icon
   as a corner badge and its title underneath, so several windows of the same app are easy to tell
-  apart. Icons are resolved from `.desktop` files (id variants, `StartupWMClass`, launcher URL and
-  whole-word title match for Chrome PWAs) and stand in when a window can't be captured
+  apart. Icons are resolved from `.desktop` files (id variants, `StartupWMClass`, Omarchy terminal
+  app class, launcher URL and whole-word title match for Chrome PWAs) and stand in when a window
+  can't be captured. Agent windows (`omarchy agent`) show the agent they run, or the default
+  agent, when an icon of that name exists, else the default terminal's icon
 - 🔴 **Notification badges** — a red dot on windows whose app sent a notification since you last
   looked at it (optional module, see [Configuration](#configuration))
 - 🎨 **Theme-aware** — follows the active Omarchy theme automatically

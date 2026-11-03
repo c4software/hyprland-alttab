@@ -67,7 +67,8 @@ function shortWorkspaceName(name) {
 // Pinned windows and the Quake console excluded, empty titles replaced with "-".
 // groupIdx: 1-based position in the client's Hyprland group, 0 if ungrouped.
 // w/h: window size, used for the preview aspect ratio.
-// Returns [{ name, entries: [{ cls, title, addr, hidden, fhid, flatIdx, groupIdx, w, h }] }].
+// pid: the window's process, to find the program a terminal window runs.
+// Returns [{ name, entries: [{ cls, title, addr, pid, hidden, fhid, flatIdx, groupIdx, w, h }] }].
 function groupClients(clients, activeWsId) {
     const wsOrder = [];
     const wsMap = {};
@@ -103,6 +104,7 @@ function groupClients(clients, activeWsId) {
                 cls: c.class,
                 title: c.title || "-",
                 addr: c.address,
+                pid: c.pid,
                 hidden: !!c.hidden,
                 fhid: c.focusHistoryID,
                 flatIdx: flatIdx++,
@@ -113,6 +115,80 @@ function groupClients(clients, activeWsId) {
         });
     }
     return groups;
+}
+
+function baseName(path) {
+    const text = String(path || "");
+    return text.slice(text.lastIndexOf("/") + 1);
+}
+
+// Program a desktop entry starts in a terminal, or "": the command of a
+// Terminal=true entry, or the program given to omarchy-launch-tui.
+// entry: { command: [...], runInTerminal }.
+function terminalProgram(entry) {
+    const words = Array.from(entry.command || []);
+    if (baseName(words[0]) === "omarchy-launch-tui") {
+        const program = words.slice(1).find(w => w.indexOf("--") !== 0);
+        return baseName(program);
+    }
+    return entry.runInTerminal ? baseName(words[0]) : "";
+}
+
+// The entry that runs program in a terminal, or null.
+function programEntry(program, entries) {
+    if (!program) return null;
+    return entries.find(e => terminalProgram(e) === program) || null;
+}
+
+// Omarchy terminal apps give their window a class of their own: the entry
+// that passes it as --app-id (only if no other entry shares it, as
+// omarchy-tui-install's TUI.tile and TUI.float do), else for
+// org.omarchy.<program> the entry that runs <program>. Returns null if none.
+// entries: [{ execString, command, runInTerminal }].
+function terminalAppEntry(cls, entries) {
+    const flag = "--app-id=" + cls;
+    const claiming = entries.filter(e => String(e.execString || "").split(/\s+/).indexOf(flag) >= 0);
+    if (claiming.length === 1) return claiming[0];
+    if (cls.indexOf("org.omarchy.") !== 0) return null;
+    return programEntry(cls.slice("org.omarchy.".length), entries);
+}
+
+// Programs that run a script: the script names the program.
+const INTERPRETERS = ["node", "bun", "deno", "python", "python3"];
+
+// `ps -eo ppid=,args=` output -> { parent pid: [child program, ...] }.
+function childPrograms(psText) {
+    const map = {};
+    for (const line of String(psText || "").split("\n")) {
+        const words = line.trim().split(/\s+/);
+        if (words.length < 2 || !/^\d+$/.test(words[0])) continue;
+        let program = baseName(words[1]);
+        if (INTERPRETERS.indexOf(program) >= 0) {
+            const script = words.slice(2).find(w => w.indexOf("-") !== 0);
+            if (script) program = baseName(script).replace(/\.(m?js|cjs|py)$/, "");
+        }
+        (map[words[0]] = map[words[0]] || []).push(program);
+    }
+    return map;
+}
+
+// The one program a terminal window runs, or "" when it runs none or several
+// (a terminal that serves several windows from one process).
+function windowProgram(children, pid) {
+    const programs = children[String(pid)] || [];
+    for (const p of programs)
+        if (p !== programs[0]) return "";
+    return programs.length ? programs[0] : "";
+}
+
+// First entry of a list file such as ~/.config/xdg-terminals.list, without
+// comments and the .desktop suffix.
+function firstListEntry(text) {
+    for (const line of String(text || "").split("\n")) {
+        const entry = line.trim();
+        if (entry && entry[0] !== "#") return entry.replace(/\.desktop$/, "");
+    }
+    return "";
 }
 
 function flatten(groups) {
