@@ -63,7 +63,7 @@ Item {
     }
 
     function followWorkspace() {
-        const entry = open && followReady ? service.flat[service.selected] : null;
+        const entry = open && enabled && followReady ? service.flat[service.selected] : null;
         if (!entry || entry.ws <= 0 || entry.ws === shownWs || entry.mon !== originMon) return;
         Hyprland.dispatch('hl.dsp.focus({ workspace = "' + entry.ws + '" })');
         shownWs = entry.ws;
