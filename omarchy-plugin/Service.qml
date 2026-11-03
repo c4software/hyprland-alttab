@@ -44,6 +44,49 @@ Item {
         }
     }
 
+    // Omarchy's default coding agent and default terminal, for the icons of
+    // agent windows (see iconPathFor).
+    property string defaultAgent: ""
+    property string defaultTerminal: ""
+
+    FileView {
+        path: Quickshell.env("HOME") + "/.config/omarchy/defaults/agent"
+        watchChanges: true
+        printErrors: false
+        onLoaded: root.defaultAgent = Logic.firstListEntry(text())
+        onFileChanged: reload()
+        onLoadFailed: root.defaultAgent = ""
+    }
+
+    FileView {
+        path: Quickshell.env("HOME") + "/.config/xdg-terminals.list"
+        watchChanges: true
+        printErrors: false
+        onLoaded: root.defaultTerminal = Logic.firstListEntry(text())
+        onFileChanged: reload()
+        onLoadFailed: root.defaultTerminal = ""
+    }
+
+    // Parent pid -> child programs of agent windows' terminals, read on each
+    // opening: the terminal process runs the agent.
+    property var childPrograms: ({})
+
+    Process {
+        id: childProc
+        stdout: StdioCollector {
+            onStreamFinished: root.childPrograms = Logic.childPrograms(text)
+        }
+    }
+
+    // Only the children of agent windows' terminals are read.
+    function readAgentPrograms(clients) {
+        const pids = clients.filter(c => c.class === "org.omarchy.agent" && c.pid > 0).map(c => c.pid);
+        root.childPrograms = ({});
+        if (!pids.length) return;
+        childProc.command = ["ps", "--ppid", pids.join(","), "-o", "ppid=,args="];
+        childProc.running = true;
+    }
+
     // Optional modules, each loaded only when enabled in alttab.json. A module
     // may define refresh(flat), called when the overlay opens, and expose
     // badges (address -> true), drawn as a dot on those windows.
@@ -214,9 +257,11 @@ Item {
     }
 
     // Icon cascade: desktop entry by id variants → StartupWMClass scan →
-    // Chrome web app URL from Exec → app Name as whole word in title (longest
-    // wins) → icon theme variants → generic.
-    function iconPathFor(cls, title) {
+    // Omarchy terminal app entry → for agent windows, the agent the window
+    // runs, the default agent, then the default terminal → Chrome web app URL
+    // from Exec → app Name as whole word in title (longest wins) → icon theme
+    // variants → generic.
+    function iconPathFor(cls, title, pid) {
         const clsLower = cls.toLowerCase();
         for (const v of [cls, clsLower, cls.replace(/-/g, ""), cls.split(".")[0]]) {
             if (!v) continue;
@@ -230,6 +275,24 @@ Item {
                 const p = resolveIcon(e.icon);
                 if (p) return p;
             }
+        }
+        // Omarchy terminal apps run in the terminal's process under a class of
+        // their own, which no StartupWMClass names.
+        const entries = Array.from(all);
+        const tui = Logic.terminalAppEntry(cls, entries);
+        const tuiIcon = tui ? resolveIcon(tui.icon) : "";
+        if (tuiIcon) return tuiIcon;
+        // omarchy-agent gives every agent the same class.
+        if (cls === "org.omarchy.agent") {
+            for (const name of [Logic.windowProgram(root.childPrograms, pid), root.defaultAgent]) {
+                if (!name || name.includes("/")) continue;
+                const e = Logic.programEntry(name, entries);
+                const p = e ? resolveIcon(e.icon) : resolveIcon(name);
+                if (p) return p;
+            }
+            const terminal = root.defaultTerminal ? DesktopEntries.byId(root.defaultTerminal) : null;
+            const p = terminal ? resolveIcon(terminal.icon) : "";
+            if (p) return p;
         }
         // Entries with a StartupWMClass were matched exactly above; skipping them
         // keeps a profile-specific launcher from claiming another profile's window.
@@ -344,6 +407,7 @@ Item {
                 const groups = Logic.groupClients(clients, activeWs);
                 const flat = Logic.flatten(groups);
                 if (!flat.length) return;
+                root.readAgentPrograms(clients);
                 root.fitThumbs(flat, groups.length);
                 root.refreshModules(flat);
                 root.groups = groups;
@@ -624,7 +688,7 @@ Item {
                                                         height: size
                                                         sourceSize.width: 64
                                                         sourceSize.height: 64
-                                                        source: root.iconPathFor(frame.modelData.cls, frame.modelData.title)
+                                                        source: root.iconPathFor(frame.modelData.cls, frame.modelData.title, frame.modelData.pid)
                                                         visible: source != "" && status !== Image.Error
                                                     }
 
