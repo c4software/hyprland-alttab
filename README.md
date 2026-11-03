@@ -89,6 +89,8 @@ opacity of the faded windows in percent (10–100, default 80) and the fade dura
 { "highlight": true, "fadeOpacity": 80, "fadeDuration": 250 }
 ```
 
+![Alt+Tab switcher with the selected window highlighted on screen and the others faded](preview-highlight.png)
+
 > Why a separate file? Omarchy's settings UI (the `schema` declared in a plugin manifest) is
 > only available to bar widgets; `service` plugins like this one get no settings from the shell.
 
