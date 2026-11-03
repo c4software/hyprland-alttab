@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="2560" height="1050" viewBox="0 0 2560 1050">
+  <!-- Render: rsvg-convert assets/preview.svg -o preview.png (needs DejaVu Sans Bold) -->
+  <defs>
+    <linearGradient id="bgTop" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="1050">
+      <stop offset="0" stop-color="#2a3b33"/>
+      <stop offset="1" stop-color="#0d1210"/>
+    </linearGradient>
+    <linearGradient id="bgBottom" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="1050">
+      <stop offset="0" stop-color="#1c2a3a"/>
+      <stop offset="1" stop-color="#0a0e14"/>
+    </linearGradient>
+    <g id="key">
+      <rect x="268.5" y="1.5" width="71" height="71" rx="9" fill="none" stroke="#9be0c0" stroke-width="3"/>
+    </g>
+  </defs>
+
+  <rect width="2560" height="1050" fill="url(#bgTop)"/>
+  <polygon points="0,899.5 2560,519.5 2560,1050 0,1050" fill="url(#bgBottom)"/>
+  <line x1="0" y1="899.5" x2="2560" y2="519.5" stroke="#9be0c0" stroke-width="3"/>
+
+  <g font-family="DejaVu Sans" font-weight="bold" fill="#e6e6e6">
+    <text x="126" y="148" font-size="44">Window previews</text>
+    <text x="2432" y="997" font-size="44" text-anchor="end">App icons</text>
+  </g>
+
+  <image x="125" y="191" width="2310" height="242" xlink:href="preview-panel-previews.png"/>
+  <image x="1378" y="761" width="1057" height="176" xlink:href="preview-panel-icons.png"/>
+
+  <g font-family="DejaVu Sans" font-weight="bold">
+    <g transform="translate(0 485)">
+      <use xlink:href="#key"/>
+      <text x="128" y="52" font-size="40" fill="#e6e6e6">Press</text>
+      <text x="304.5" y="53" font-size="44" fill="#9be0c0" text-anchor="middle">P</text>
+      <text x="363" y="52" font-size="40" fill="#e6e6e6">to toggle previews / icons</text>
+    </g>
+    <g transform="translate(0 585)">
+      <use xlink:href="#key"/>
+      <text x="128" y="52" font-size="40" fill="#e6e6e6">Press</text>
+      <text x="304.5" y="53" font-size="44" fill="#9be0c0" text-anchor="middle">Q</text>
+      <text x="363" y="52" font-size="40" fill="#e6e6e6">to close a window</text>
+    </g>
+    <g transform="translate(0 685)">
+      <use xlink:href="#key"/>
+      <text x="128" y="52" font-size="40" fill="#e6e6e6">Press</text>
+      <text x="304.5" y="53" font-size="44" fill="#9be0c0" text-anchor="middle">F</text>
+      <text x="363" y="52" font-size="40" fill="#e6e6e6">to highlight on screen</text>
+    </g>
+  </g>
+</svg>
