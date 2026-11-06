@@ -127,9 +127,12 @@ PanelWindow {
             delete service.heldKeys[event.key];
             // event.modifiers may still include the modifier being
             // released — subtract it explicitly, like the Rust port.
-            const altReleasing = event.key === Qt.Key_Alt;
+            // Matched by keycode too: grp:alts_toggle releases Alt as ISO_Prev/Next_Group.
+            const code = event.nativeScanCode;
+            const altReleasing = event.key === Qt.Key_Alt || code === 64 || code === 108;
             const superReleasing = event.key === Qt.Key_Meta
-                || event.key === Qt.Key_Super_L || event.key === Qt.Key_Super_R;
+                || event.key === Qt.Key_Super_L || event.key === Qt.Key_Super_R
+                || code === 133 || code === 134;
             const altHeld = (event.modifiers & Qt.AltModifier) && !altReleasing;
             const superHeld = (event.modifiers & Qt.MetaModifier) && !superReleasing;
             service.modsHeld = !!(altHeld || superHeld);
