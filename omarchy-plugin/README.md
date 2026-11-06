@@ -66,11 +66,11 @@ hyprctl dispatch 'hl.dsp.global("omarchy-alttab:next")'   # opens the overlay
 Optional `~/.config/omarchy/alttab.json`, picked up live:
 
 ```json
-{ "previews": false, "modules": { "notificationBadges": false } }
+{ "previews": true, "modules": { "notificationBadges": false } }
 ```
 
-- `previews` (default `true`): `false` shows app icons instead of window
-  previews; `true` (or deleting the file) turns them back on. Pressing `P`
+- `previews` (default `false`): `true` shows window previews instead of app
+  icons; `false` (or deleting the file) goes back to icons. Pressing `P`
   while the overlay is open toggles it and saves the choice to this file.
 - `highlight` (default `false`): while the overlay is open, the selected
   window gets an accent border, the other listed windows are faded, and the

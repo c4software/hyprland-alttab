@@ -43,7 +43,7 @@ Item {
     readonly property int maxThumbHeight: 150
     property int thumbHeight: maxThumbHeight
     property var toplevelByAddr: ({})
-    property bool previews: true
+    property bool previews: false
     property var modules: Logic.defaultModules()
 
     FileView {

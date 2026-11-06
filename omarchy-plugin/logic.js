@@ -37,7 +37,7 @@ function defaultModules() {
 
 // Parse ~/.config/omarchy/alttab.json; missing or invalid keys keep defaults.
 function parseConfig(text) {
-    const config = { previews: true, highlight: false, fadeOpacity: 80, fadeDuration: 250, modules: defaultModules() };
+    const config = { previews: false, highlight: false, fadeOpacity: 80, fadeDuration: 250, modules: defaultModules() };
     let data = null;
     try { data = JSON.parse(text); } catch (e) { return config; }
     if (data && typeof data.previews === "boolean") config.previews = data.previews;

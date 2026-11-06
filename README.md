@@ -69,15 +69,15 @@ hyprctl dispatch 'hl.dsp.global("omarchy-alttab:next")'
 
 ### Configuration
 
-Window previews are on by default. Press `P` while the overlay is open to switch between previews
-and app icons; the choice is saved to `~/.config/omarchy/alttab.json`. You can also edit that file
+App icons are shown by default. Press `P` while the overlay is open to switch between icons
+and window previews; the choice is saved to `~/.config/omarchy/alttab.json`. You can also edit that file
 directly (applied live, no shell restart needed):
 
 ```json
-{ "previews": false }
+{ "previews": true }
 ```
 
-Set `"previews": true` or delete the file to turn them back on.
+Set `"previews": false` or delete the file to go back to icons.
 
 Press `F` while the overlay is open to highlight the selected window on screen: an accent border,
 the other windows faded, and the workspace shown follows the selection (without moving focus;
