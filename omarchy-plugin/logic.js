@@ -37,10 +37,15 @@ function defaultModules() {
 
 // Parse ~/.config/omarchy/alttab.json; missing or invalid keys keep defaults.
 function parseConfig(text) {
-    const config = { previews: true, modules: defaultModules() };
+    const config = { previews: false, highlight: false, fadeOpacity: 80, fadeDuration: 250, modules: defaultModules() };
     let data = null;
     try { data = JSON.parse(text); } catch (e) { return config; }
     if (data && typeof data.previews === "boolean") config.previews = data.previews;
+    if (data && typeof data.highlight === "boolean") config.highlight = data.highlight;
+    if (data && typeof data.fadeOpacity === "number" && isFinite(data.fadeOpacity))
+        config.fadeOpacity = Math.max(10, Math.min(100, Math.round(data.fadeOpacity)));
+    if (data && typeof data.fadeDuration === "number" && isFinite(data.fadeDuration))
+        config.fadeDuration = Math.max(0, Math.min(2000, Math.round(data.fadeDuration)));
     if (data && data.modules && typeof data.modules === "object")
         for (const id in config.modules)
             if (typeof data.modules[id] === "boolean") config.modules[id] = data.modules[id];
@@ -64,7 +69,7 @@ function shortWorkspaceName(name) {
 
 // Group clients by workspace: active workspace first then ascending id;
 // within a group the focused window (fhid == 0) first, then ascending fhid.
-// Pinned windows and the Quake console excluded, empty titles replaced with "-".
+// Pinned windows and special workspaces excluded, empty titles replaced with "-".
 // groupIdx: 1-based position in the client's Hyprland group, 0 if ungrouped.
 // w/h: window size, used for the preview aspect ratio.
 // pid: the window's process, to find the program a terminal window runs.
@@ -74,7 +79,7 @@ function groupClients(clients, activeWsId) {
     const wsMap = {};
 
     for (const c of clients) {
-        if (c.pinned || c.workspace.name === "special:qconsole") continue;
+        if (c.pinned || String(c.workspace.name).indexOf("special:") === 0) continue;
         const wsId = c.workspace.id;
         if (!(wsId in wsMap)) {
             wsOrder.push(wsId);
@@ -104,6 +109,8 @@ function groupClients(clients, activeWsId) {
                 cls: c.class,
                 title: c.title || "-",
                 addr: c.address,
+                ws: c.workspace ? c.workspace.id : 0,
+                mon: c.monitor,
                 pid: c.pid,
                 hidden: !!c.hidden,
                 fhid: c.focusHistoryID,

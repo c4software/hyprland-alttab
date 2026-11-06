@@ -17,7 +17,7 @@ python/           Legacy prototype
 ## Features
 
 - 🪟 **Visual switcher** on the layer-shell `Overlay` layer with exclusive keyboard focus
-- 🗂️ **Grouped by workspace** (active first), sorted by recency (`focusHistoryID`), pinned windows and the `special:qconsole` workspace excluded
+- 🗂️ **Grouped by workspace** (active first), sorted by recency (`focusHistoryID`), pinned windows and special workspaces (`special:*`) excluded
 - 🖼️ **Window previews** — a still frame of each window (toplevel screencopy), with its app icon
   as a corner badge and its title underneath, so several windows of the same app are easy to tell
   apart. Icons are resolved from `.desktop` files (id variants, `StartupWMClass`, Omarchy terminal
@@ -27,7 +27,7 @@ python/           Legacy prototype
 - 🔴 **Notification badges** — a red dot on windows whose app sent a notification since you last
   looked at it (optional module, see [Configuration](#configuration))
 - 🎨 **Theme-aware** — follows the active Omarchy theme automatically
-- ⌨️ Tab/Right → next, Shift+Tab/Left → previous, Return → activate, Escape → cancel, P → toggle previews, Q → close window,
+- ⌨️ Tab/Right → next, Shift+Tab/Left → previous, Return → activate, Escape → cancel, P → toggle previews, F → highlight on screen, Q → close window,
   releasing ALT/SUPER → activate; hover selects, click activates. ALT/SUPER+Shift+Tab opens on the
   last window of the list
 - 🫀 Stays open while ALT or SUPER is physically held (verified via `hl.is_key_down` when no
@@ -69,15 +69,27 @@ hyprctl dispatch 'hl.dsp.global("omarchy-alttab:next")'
 
 ### Configuration
 
-Window previews are on by default. Press `P` while the overlay is open to switch between previews
-and app icons; the choice is saved to `~/.config/omarchy/alttab.json`. You can also edit that file
+App icons are shown by default. Press `P` while the overlay is open to switch between icons
+and window previews; the choice is saved to `~/.config/omarchy/alttab.json`. You can also edit that file
 directly (applied live, no shell restart needed):
 
 ```json
-{ "previews": false }
+{ "previews": true }
 ```
 
-Set `"previews": true` or delete the file to turn them back on.
+Set `"previews": false` or delete the file to go back to icons.
+
+Press `F` while the overlay is open to highlight the selected window on screen: an accent border,
+the other windows faded, and the workspace shown follows the selection (without moving focus;
+Escape returns to the starting workspace). Off by default, saved to the same file, with the
+opacity of the faded windows in percent (10–100, default 80) and the fade duration in milliseconds
+(0–2000, default 250, 0 disables the animation):
+
+```json
+{ "highlight": true, "fadeOpacity": 80, "fadeDuration": 250 }
+```
+
+![Alt+Tab switcher with the selected window highlighted on screen and the others faded](preview-highlight.png)
 
 > Why a separate file? Omarchy's settings UI (the `schema` declared in a plugin manifest) is
 > only available to bar widgets; `service` plugins like this one get no settings from the shell.
