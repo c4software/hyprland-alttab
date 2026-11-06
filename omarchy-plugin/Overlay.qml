@@ -16,6 +16,17 @@ PanelWindow {
     property bool hoverArmed: false
     property point initialPos: Qt.point(-1, -1)
 
+    /** Content stays transparent until every preview has its first frame, or the timeout. */
+    property int pendingCaptures: 0
+    property bool revealTimedOut: false
+    readonly property bool revealed: revealTimedOut || pendingCaptures <= 0
+
+    Timer {
+        interval: 200
+        running: true
+        onTriggered: panel.revealTimedOut = true
+    }
+
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     WlrLayershell.namespace: "omarchy-alttab"
@@ -71,6 +82,7 @@ PanelWindow {
         border.color: Color.accent
         border.width: 2
         radius: 16
+        opacity: panel.revealed ? 1 : 0
         implicitWidth: column.implicitWidth + 40
         implicitHeight: column.implicitHeight + 40
 
@@ -262,6 +274,11 @@ PanelWindow {
                                                 paintCursor: false
                                                 constraintSize: Qt.size(Math.max(1, width), Math.max(1, height))
                                                 visible: hasContent
+
+                                                readonly property bool waiting: captureSource !== null && !hasContent
+                                                onWaitingChanged: panel.pendingCaptures += waiting ? 1 : -1
+                                                Component.onCompleted: if (waiting) panel.pendingCaptures++
+                                                Component.onDestruction: if (waiting) panel.pendingCaptures--
                                             }
 
                                             Image {
