@@ -19,7 +19,7 @@ PanelWindow {
     /** Content stays transparent until every preview has its first frame, or the timeout. */
     property int pendingCaptures: 0
     property bool revealTimedOut: false
-    readonly property bool revealed: revealTimedOut || pendingCaptures <= 0
+    readonly property bool revealed: revealTimedOut || (backingWindowVisible && pendingCaptures <= 0)
 
     Timer {
         interval: 200
@@ -266,19 +266,25 @@ PanelWindow {
                                             color: service.previews ? Qt.alpha(Color.foreground, 0.06) : "transparent"
                                             clip: true
 
-                                            ScreencopyView {
+                                            /** Created once the overlay is mapped, the software backend never captures before. */
+                                            Loader {
                                                 id: capture
                                                 anchors.fill: parent
-                                                captureSource: service.open && service.previews ? frame.source : null
-                                                live: false
-                                                paintCursor: false
-                                                constraintSize: Qt.size(Math.max(1, width), Math.max(1, height))
-                                                visible: hasContent
+                                                readonly property bool hasContent: item ? item.hasContent : false
+                                                active: panel.backingWindowVisible
+                                                sourceComponent: ScreencopyView {
+                                                    anchors.fill: parent
+                                                    captureSource: service.open && service.previews ? frame.source : null
+                                                    live: false
+                                                    paintCursor: false
+                                                    constraintSize: Qt.size(Math.max(1, width), Math.max(1, height))
+                                                    visible: hasContent
 
-                                                readonly property bool waiting: captureSource !== null && !hasContent
-                                                onWaitingChanged: panel.pendingCaptures += waiting ? 1 : -1
-                                                Component.onCompleted: if (waiting) panel.pendingCaptures++
-                                                Component.onDestruction: if (waiting) panel.pendingCaptures--
+                                                    readonly property bool waiting: captureSource !== null && !hasContent
+                                                    onWaitingChanged: panel.pendingCaptures += waiting ? 1 : -1
+                                                    Component.onCompleted: if (waiting) panel.pendingCaptures++
+                                                    Component.onDestruction: if (waiting) panel.pendingCaptures--
+                                                }
                                             }
 
                                             Image {
