@@ -266,9 +266,7 @@ PanelWindow {
                                             color: service.previews ? Qt.alpha(Color.foreground, 0.06) : "transparent"
                                             clip: true
 
-                                            // Created only once the overlay is on screen: a
-                                            // ScreencopyView that completes in a window with no
-                                            // scene graph never captures on the software backend.
+                                            /** Created once the overlay is mapped, the software backend never captures before. */
                                             Loader {
                                                 id: capture
                                                 anchors.fill: parent
