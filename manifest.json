@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "vbrosseau.alttab",
   "name": "Alt+Tab",
-  "version": "2.4.1",
+  "version": "2.4.2",
   "author": "Valentin Brosseau",
   "description": "Alt+Tab window switcher overlay for Hyprland",
   "kinds": [
