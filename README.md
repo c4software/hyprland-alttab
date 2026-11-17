@@ -117,12 +117,15 @@ See [`omarchy-plugin/README.md`](omarchy-plugin/README.md) for details.
 
 ### Uninstall
 
+First remove the `dofile` line (or the binds and layer rule, if you pasted them
+by hand) from your Hyprland config and `hyprctl reload` — once the plugin is
+removed, the `dofile` target no longer exists and Hyprland reports a config error.
+Then:
+
 ```bash
 omarchy plugin remove vbrosseau.alttab --yes
 ```
 
-Then remove the `dofile` line (or the binds and layer rule, if you pasted them
-by hand) from your Hyprland config and `hyprctl reload`.
 The plugin never modifies your configuration files itself.
 
 ## Why a shell plugin?
