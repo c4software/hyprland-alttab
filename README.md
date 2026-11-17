@@ -46,19 +46,22 @@ ln -sfn "$PWD/hyprland-alttab" ~/.config/omarchy/plugins/vbrosseau.alttab
 omarchy plugin enable vbrosseau.alttab
 ```
 
-Then bind it — in `~/.config/hypr/bindings.lua` (or `customisation.lua`):
+Then bind it — in `~/.config/hypr/bindings.lua` (or `customisation.lua`) — by
+including the bindings the plugin ships, so `omarchy plugin update` keeps them
+current:
 
 ```lua
-hl.unbind("ALT + TAB")
-o.bind("ALT + TAB", nil, hl.dsp.global("omarchy-alttab:next"), { repeating = true })
-hl.unbind("SUPER + TAB")
-o.bind("SUPER + TAB", nil, hl.dsp.global("omarchy-alttab:next"), { repeating = true })
-hl.unbind("ALT + SHIFT + TAB")
-o.bind("ALT + SHIFT + TAB", nil, hl.dsp.global("omarchy-alttab:prev"), { repeating = true })
-hl.unbind("SUPER + SHIFT + TAB")
-o.bind("SUPER + SHIFT + TAB", nil, hl.dsp.global("omarchy-alttab:prev"), { repeating = true })
-hl.layer_rule({ match = { namespace = "omarchy-alttab" }, no_anim = true })
+dofile(os.getenv("HOME") .. "/.config/omarchy/plugins/vbrosseau.alttab/omarchy-plugin/alttab-bindings.lua")
 ```
+
+[`omarchy-plugin/alttab-bindings.lua`](omarchy-plugin/alttab-bindings.lua) holds
+the four binds (`ALT`/`SUPER`+`TAB` and their `Shift` variants), the `alttab`
+submap the overlay switches to while open, and the layer rule.
+
+The binds carry the `"Alt-Tab switcher"` description on purpose: the plugin
+looks for it in `hyprctl binds` at startup and notifies when it is missing, so
+keep the description if you customize the keys. Note that `SUPER+TAB` and
+`SUPER+SHIFT+TAB` replace Omarchy's next/previous workspace binds.
 
 Finally `omarchy restart shell`, then `hyprctl reload` and check `hyprctl configerrors`.
 The shortcut must appear in `hyprctl globalshortcuts`. Manual trigger for testing:
@@ -118,7 +121,8 @@ See [`omarchy-plugin/README.md`](omarchy-plugin/README.md) for details.
 omarchy plugin remove vbrosseau.alttab --yes
 ```
 
-Then remove the two binds and the layer rule from your Hyprland config and `hyprctl reload`.
+Then remove the `dofile` line (or the binds and layer rule, if you pasted them
+by hand) from your Hyprland config and `hyprctl reload`.
 The plugin never modifies your configuration files itself.
 
 ## Why a shell plugin?
