@@ -23,11 +23,12 @@ no socket, no autostart to manage.
 > The `manifest.json` lives at the repo root (required by `omarchy plugin add`),
 > with `entryPoints` pointing to `omarchy-plugin/Service.qml`.
 
-1. Install and enable:
-
 ```sh
 omarchy plugin add https://github.com/c4software/hyprland-alttab --enable
 ```
+
+Nothing else to set up: the keybindings are registered by the plugin (see
+[Keybindings](#keybindings)).
 
 For local development, link a working copy instead:
 
@@ -36,26 +37,25 @@ ln -sfn ~/projets/hyprland-alttab ~/.config/omarchy/plugins/vbrosseau.alttab
 omarchy plugin enable vbrosseau.alttab
 ```
 
-2. Bindings — nothing to do. The plugin evaluates
-   [`alttab-bindings.lua`](alttab-bindings.lua) through `hyprctl eval` when its
-   `"Alt-Tab switcher"` binds are missing: at startup and after each
-   `configreloaded` event, since evaluated binds don't survive a reload.
-   Disabling the plugin (or setting `"bindings": false`) runs `hyprctl reload`
-   to restore the binds from your config. If the binds still can't be found
-   after evaluating the file, it shows a notification (clicking it opens this
-   README).
+Plugin code changes reload automatically
+(`omarchy-shell shell rescanPlugins` to force).
 
-   A config that already includes the file (earlier versions) keeps working:
-   the binds are found and the plugin registers nothing.
+## Keybindings
+
+The plugin evaluates [`alttab-bindings.lua`](alttab-bindings.lua) through
+`hyprctl eval` when its `"Alt-Tab switcher"` binds are missing: at startup and
+after each `configreloaded` event, since evaluated binds don't survive a
+reload. Disabling the plugin (or setting `"bindings": false`) runs
+`hyprctl reload` to restore the binds from your config. If the binds still
+can't be found after evaluating the file, it shows a notification (clicking it
+opens this README). The shortcut shows up in `hyprctl globalshortcuts`.
+
+A config that still includes the file (earlier versions) keeps working: the
+binds are found and the plugin registers nothing. The line can be removed:
 
 ```lua
 dofile(os.getenv("HOME") .. "/.config/omarchy/plugins/vbrosseau.alttab/omarchy-plugin/alttab-bindings.lua")
 ```
-
-3. Check that the shortcut shows up in `hyprctl globalshortcuts`.
-
-Plugin code changes reload automatically
-(`omarchy-shell shell rescanPlugins` to force).
 
 ## Manual test
 

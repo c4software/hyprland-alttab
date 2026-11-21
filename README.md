@@ -145,6 +145,7 @@ The QML plugin runs as a `service` inside the long-lived `omarchy-shell` process
 | Spawn guard against double-launch | An `open` boolean |
 | Parses theme files itself | Shell `Color` singleton (live theme) |
 | Needs an autostart entry | Loaded by the shell every session |
+| Binds added to the Hyprland config | Binds registered by the plugin |
 
 ---
 
