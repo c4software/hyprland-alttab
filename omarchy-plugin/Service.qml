@@ -95,6 +95,12 @@ Item {
     }
 
     function applyConfig(config) {
+        const bindingsChanged = config.bindings !== root.autoBind;
+        root.autoBind = config.bindings;
+        if (bindingsChanged) {
+            if (root.autoBind) root.checkBinds();
+            else root.dropOwnBinds();
+        }
         root.previews = config.previews;
         root.highlight = config.highlight;
         root.fadeOpacity = config.fadeOpacity;
@@ -252,14 +258,50 @@ Item {
         }
     }
 
-    // The Lua binding snippet tags its binds with the "Alt-Tab switcher"
-    // description; its absence means the user enabled the plugin without
-    // installing alttab-bindings.lua.
+    // Evaluates alttab-bindings.lua when its "Alt-Tab switcher" binds are missing, again after each config reload.
+    property bool autoBind: true
+    property bool boundByPlugin: false
+    property bool bindApplyPending: false
+
+    readonly property string bindingsFile: {
+        const url = Qt.resolvedUrl("alttab-bindings.lua").toString();
+        return url.indexOf("file://") === 0 ? decodeURIComponent(url.substring(7)) : "";
+    }
+
+    function checkBinds() {
+        if (!bindsCheck.running) bindsCheck.running = true;
+        else bindsRecheck.restart();
+    }
+
+    function dropOwnBinds() {
+        if (!root.boundByPlugin) return;
+        root.boundByPlugin = false;
+        Quickshell.execDetached(["hyprctl", "reload"]);
+    }
+
     Timer {
         interval: 3000
         running: true
-        onTriggered: bindsCheck.running = true
+        onTriggered: root.checkBinds()
     }
+
+    Timer {
+        id: bindsRecheck
+        interval: 500
+        onTriggered: root.checkBinds()
+    }
+
+    Connections {
+        target: Hyprland
+        function onRawEvent(event) {
+            if (event.name !== "configreloaded") return;
+            root.boundByPlugin = false;
+            root.bindApplyPending = false;
+            bindsRecheck.restart();
+        }
+    }
+
+    Component.onDestruction: root.dropOwnBinds()
 
     Process {
         id: bindsCheck
@@ -268,17 +310,35 @@ Item {
             onStreamFinished: {
                 let binds = [];
                 try { binds = JSON.parse(text); } catch (e) { return; }
-                if (!binds.some(b => b.description === "Alt-Tab switcher"))
-                    missingBindNotify.running = true;
+                const present = binds.some(b => b.description === "Alt-Tab switcher");
+                const applied = root.bindApplyPending;
+                root.bindApplyPending = false;
+                if (present) {
+                    if (applied) root.boundByPlugin = true;
+                    return;
+                }
+                if (!root.autoBind) return;
+                if (!applied && root.bindingsFile && root.bindingsFile.indexOf("]==]") < 0) {
+                    root.bindApplyPending = true;
+                    bindsApply.running = true;
+                    return;
+                }
+                missingBindNotify.running = true;
             }
         }
+    }
+
+    Process {
+        id: bindsApply
+        command: ["hyprctl", "eval", "dofile([==[" + root.bindingsFile + "]==])"]
+        onExited: bindsCheck.running = true
     }
 
     Process {
         id: missingBindNotify
         command: ["sh", "-c",
             'action=$(notify-send -u critical -A default="Open README" "hyprland-alttab" ' +
-            '"No keybinding found. Add alttab-bindings.lua to your Hyprland config."); ' +
+            '"Could not register the Alt-Tab keybindings. See the README."); ' +
             '[ "$action" = "default" ] && xdg-open ' +
             '"https://github.com/c4software/hyprland-alttab/blob/main/omarchy-plugin/README.md"']
     }

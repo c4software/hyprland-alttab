@@ -46,24 +46,29 @@ ln -sfn "$PWD/hyprland-alttab" ~/.config/omarchy/plugins/vbrosseau.alttab
 omarchy plugin enable vbrosseau.alttab
 ```
 
-Then bind it — in `~/.config/hypr/bindings.lua` (or `customisation.lua`) — by
-including the bindings the plugin ships, so `omarchy plugin update` keeps them
-current:
+That's it: the plugin registers its keybindings in Hyprland itself, at
+startup and again after every `hyprctl reload`, by evaluating
+[`omarchy-plugin/alttab-bindings.lua`](omarchy-plugin/alttab-bindings.lua). That
+file holds the four binds (`ALT`/`SUPER`+`TAB` and their `Shift` variants), the
+`alttab` submap the overlay switches to while open, and the layer rule. Your
+configuration files are left untouched; disabling the plugin reloads Hyprland,
+which restores your previous binds.
+
+Note that `ALT+TAB`, `SUPER+TAB` and their `Shift` variants replace Omarchy's
+window-cycling and next/previous workspace binds. To keep your own binds
+instead, set `"bindings": false` in `~/.config/omarchy/alttab.json` (see
+[Configuration](omarchy-plugin/README.md#configuration)).
+
+If you installed an earlier version, your config may already include the file:
 
 ```lua
 dofile(os.getenv("HOME") .. "/.config/omarchy/plugins/vbrosseau.alttab/omarchy-plugin/alttab-bindings.lua")
 ```
 
-[`omarchy-plugin/alttab-bindings.lua`](omarchy-plugin/alttab-bindings.lua) holds
-the four binds (`ALT`/`SUPER`+`TAB` and their `Shift` variants), the `alttab`
-submap the overlay switches to while open, and the layer rule.
+It keeps working: the plugin sees the binds (by their `"Alt-Tab switcher"`
+description) and registers nothing more. You can remove the line and
+`hyprctl reload`; the plugin then takes over.
 
-The binds carry the `"Alt-Tab switcher"` description on purpose: the plugin
-looks for it in `hyprctl binds` at startup and notifies when it is missing, so
-keep the description if you customize the keys. Note that `SUPER+TAB` and
-`SUPER+SHIFT+TAB` replace Omarchy's next/previous workspace binds.
-
-Finally `omarchy restart shell`, then `hyprctl reload` and check `hyprctl configerrors`.
 The shortcut must appear in `hyprctl globalshortcuts`. Manual trigger for testing:
 
 ```bash
@@ -117,10 +122,10 @@ See [`omarchy-plugin/README.md`](omarchy-plugin/README.md) for details.
 
 ### Uninstall
 
-First remove the `dofile` line (or the binds and layer rule, if you pasted them
-by hand) from your Hyprland config and `hyprctl reload` — once the plugin is
-removed, the `dofile` target no longer exists and Hyprland reports a config error.
-Then:
+If your Hyprland config still includes `alttab-bindings.lua` (earlier
+versions), first remove that `dofile` line (or the binds and layer rule, if you
+pasted them by hand) and `hyprctl reload` — once the plugin is removed, the
+`dofile` target no longer exists and Hyprland reports a config error. Then:
 
 ```bash
 omarchy plugin remove vbrosseau.alttab --yes

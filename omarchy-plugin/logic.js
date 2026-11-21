@@ -37,10 +37,11 @@ function defaultModules() {
 
 // Parse ~/.config/omarchy/alttab.json; missing or invalid keys keep defaults.
 function parseConfig(text) {
-    const config = { previews: false, highlight: false, fadeOpacity: 80, fadeDuration: 250, modules: defaultModules() };
+    const config = { previews: false, highlight: false, bindings: true, fadeOpacity: 80, fadeDuration: 250, modules: defaultModules() };
     let data = null;
     try { data = JSON.parse(text); } catch (e) { return config; }
     if (data && typeof data.previews === "boolean") config.previews = data.previews;
+    if (data && typeof data.bindings === "boolean") config.bindings = data.bindings;
     if (data && typeof data.highlight === "boolean") config.highlight = data.highlight;
     if (data && typeof data.fadeOpacity === "number" && isFinite(data.fadeOpacity))
         config.fadeOpacity = Math.max(10, Math.min(100, Math.round(data.fadeOpacity)));

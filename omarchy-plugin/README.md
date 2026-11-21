@@ -36,21 +36,23 @@ ln -sfn ~/projets/hyprland-alttab ~/.config/omarchy/plugins/vbrosseau.alttab
 omarchy plugin enable vbrosseau.alttab
 ```
 
-2. Bindings — include [`alttab-bindings.lua`](alttab-bindings.lua) from
-   `~/.config/hypr/customisation.lua` (or `bindings.lua`), so plugin updates
-   apply without touching your config:
+2. Bindings — nothing to do. The plugin evaluates
+   [`alttab-bindings.lua`](alttab-bindings.lua) through `hyprctl eval` when its
+   `"Alt-Tab switcher"` binds are missing: at startup and after each
+   `configreloaded` event, since evaluated binds don't survive a reload.
+   Disabling the plugin (or setting `"bindings": false`) runs `hyprctl reload`
+   to restore the binds from your config. If the binds still can't be found
+   after evaluating the file, it shows a notification (clicking it opens this
+   README).
+
+   A config that already includes the file (earlier versions) keeps working:
+   the binds are found and the plugin registers nothing.
 
 ```lua
 dofile(os.getenv("HOME") .. "/.config/omarchy/plugins/vbrosseau.alttab/omarchy-plugin/alttab-bindings.lua")
 ```
 
-   If the plugin starts without finding the binding, it shows a notification
-   (clicking it opens this README). Detection relies on the `"Alt-Tab switcher"`
-   bind description — keep it if you customize the keys.
-
-3. `omarchy restart shell`, then `hyprctl reload` and check
-   `hyprctl configerrors`. The shortcut must show up in
-   `hyprctl globalshortcuts`.
+3. Check that the shortcut shows up in `hyprctl globalshortcuts`.
 
 Plugin code changes reload automatically
 (`omarchy-shell shell rescanPlugins` to force).
@@ -72,6 +74,10 @@ Optional `~/.config/omarchy/alttab.json`, picked up live:
 - `previews` (default `false`): `true` shows window previews instead of app
   icons; `false` (or deleting the file) goes back to icons. Pressing `P`
   while the overlay is open toggles it and saves the choice to this file.
+- `bindings` (default `true`): `false` stops the plugin from registering
+  `alttab-bindings.lua`, for those who bind `hl.dsp.global("omarchy-alttab:next")`
+  and `hl.dsp.global("omarchy-alttab:prev")` themselves (also define the
+  `alttab` submap with an `ESCAPE` exit, the overlay enters it while open).
 - `highlight` (default `false`): while the overlay is open, the selected
   window gets an accent border, the other listed windows are faded, and the
   workspace shown follows the selection, all through Hyprland window rules
