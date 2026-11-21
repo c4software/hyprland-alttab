@@ -2,17 +2,10 @@
 
 A visual **Alt+Tab window switcher** for the [Hyprland](https://hyprland.org/) Wayland compositor.
 
-The recommended implementation is an **[Omarchy](https://omarchy.org/) shell plugin** (QML,
-hosted by the `omarchy-shell` Quickshell process). Two legacy standalone implementations —
-a **Rust** GTK4 binary and a **Python** prototype — are kept in the repo.
+It is an **[Omarchy](https://omarchy.org/) shell plugin** (QML,
+hosted by the `omarchy-shell` Quickshell process).
 
 ![Alt+Tab switcher overlay, with window previews (top) and app icons (bottom)](preview.png)
-
-```
-omarchy-plugin/   Omarchy shell plugin (QML) — recommended
-rust/             Legacy standalone GTK4 binary
-python/           Legacy prototype
-```
 
 ## Features
 
@@ -132,37 +125,6 @@ omarchy plugin remove vbrosseau.alttab --yes
 ```
 
 The plugin never modifies your configuration files itself.
-
-## Why a shell plugin?
-
-The QML plugin runs as a `service` inside the long-lived `omarchy-shell` process:
-
-| Legacy (Rust/Python) | Plugin (QML) |
-|---|---|
-| Daemon + Unix socket + PID files | The resident shell process |
-| One-shot GTK switcher process | `LazyLoader` → `PanelWindow` in-process |
-| `--focus-address` helper process | `Hyprland.dispatch()` after close |
-| Spawn guard against double-launch | An `open` boolean |
-| Parses theme files itself | Shell `Color` singleton (live theme) |
-| Needs an autostart entry | Loaded by the shell every session |
-| Binds added to the Hyprland config | Binds registered by the plugin |
-
----
-
-## Legacy implementations
-
-Both are standalone programs that predate the plugin, driven by a daemon and their own
-Unix sockets. They are not installed, invoked or required by the plugin.
-
-```
-alttab                      Starts the daemon if needed, sends "tab" (bind this)
-alttab --daemon             Starts the daemon in the background
-alttab --show               Shows the GTK4 switcher (one-shot)
-alttab --kill               Stops the daemon
-alttab --focus-address ADDR Focus a window by Hyprland address
-```
-
-Build instructions, architecture and runtime details: [`rust/README.md`](rust/README.md).
 
 ## License
 

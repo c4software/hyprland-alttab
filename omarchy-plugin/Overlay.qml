@@ -12,7 +12,7 @@ PanelWindow {
 
     // Hover only selects once the pointer really moved after the
     // overlay opened — the surface maps under a stationary cursor,
-    // which must not steal the selection (GTK-version semantics).
+    // which must not steal the selection.
     property bool hoverArmed: false
     property point initialPos: Qt.point(-1, -1)
 
@@ -44,9 +44,8 @@ PanelWindow {
 
     // Fast-tap race: modifier released before the exclusive keyboard
     // grant delivers any event. While no event has been seen, ask the
-    // compositor for the real modifier state (the GDK query of the
-    // Rust version); once an event arrives the key handlers own the
-    // closing decision.
+    // compositor for the real modifier state; once an event arrives the
+    // key handlers own the closing decision.
     Timer {
         id: noKeyTimer
         interval: 150
@@ -138,7 +137,7 @@ PanelWindow {
             service.sawKeyEvent = true;
             delete service.heldKeys[event.key];
             // event.modifiers may still include the modifier being
-            // released — subtract it explicitly, like the Rust port.
+            // released — subtract it explicitly.
             // Matched by keycode too: grp:alts_toggle releases Alt as ISO_Prev/Next_Group.
             const code = event.nativeScanCode;
             const altReleasing = event.key === Qt.Key_Alt || code === 64 || code === 108;
